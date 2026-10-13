@@ -67,3 +67,11 @@ export const PutPushTokenDtoSchema = z
     appVersion: z.string().trim().max(32).optional(),
   })
   .openapi("PutPushTokenDto");
+
+/** Résultat de « Envoyer une notification de test » (cet iPhone seulement). */
+export const PushTestResultDtoSchema = z
+  .object({
+    status: z.enum(["sent", "not_configured", "no_token", "failed"]),
+    reason: z.string().nullable(),
+  })
+  .openapi("PushTestResultDto");

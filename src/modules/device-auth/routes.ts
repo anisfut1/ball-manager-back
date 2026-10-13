@@ -8,7 +8,7 @@ import { parse } from "../trainings/routes.js";
 import { decryptPublicToken } from "../public-tables/personal-link.js";
 import type { EncryptedPayload } from "../../security/crypto.js";
 import { AddSessionPeopleDtoSchema, CreateAuthCodeDtoSchema, CreateDeviceSessionDtoSchema, ExchangeAuthCodeDtoSchema, PutPushTokenDtoSchema } from "../../contracts/device-auth.js";
-import { registerPushToken, removePushToken } from "../push/service.js";
+import { registerPushToken, removePushToken, sendTestPush } from "../push/service.js";
 import {
   addGrants,
   consumeAuthCode,
@@ -116,6 +116,13 @@ deviceAuthRouter.put("/session/push-token", async (c) => {
   const body = await parse(PutPushTokenDtoSchema, c);
   await registerPushToken(c.get("supabase"), session, body);
   return c.body(null, 204);
+});
+
+/** POST …/auth/session/push-test — notification de test vers CET iPhone seulement (Profil de l'app). */
+deviceAuthRouter.post("/session/push-test", async (c) => {
+  limit(c, "push-test", 10);
+  const session = await requireSession(c);
+  return c.json(await sendTestPush(c.get("supabase"), session), 200, NO_STORE);
 });
 
 /** DELETE …/auth/session/push-token — plus de notifications de ce club sur cet appareil. */
