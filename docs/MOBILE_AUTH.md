@@ -80,7 +80,7 @@ Générateurs migrés :
 
 ## CORS
 
-- `capacitor://localhost` (l'app) est autorisée. C'est sans risque : l'API n'utilise aucun cookie.
+- L'app mobile native (`ball-manager-app`, Expo / React Native) n'envoie pas d'en-tête `Origin` : seules les origines web de `FRONTEND_ORIGINS` sont autorisées. L'API n'utilise aucun cookie.
 - Les en-têtes `X-Personal-Link-Token` et `X-BM-As` sont autorisés.
 
 ## Migration SQL

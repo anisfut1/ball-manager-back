@@ -12,13 +12,6 @@ import { logError } from "./logger.js";
 export const app = new Hono<AppEnv>();
 
 /**
- * Origine de l'app iOS (Capacitor, `capacitor://localhost`). Sans risque : l'API
- * n'utilise aucun cookie, chaque appel porte sa preuve (JWT, lien personnel ou
- * session d'appareil) ; CORS ne fait que laisser l'app lire les réponses.
- */
-export const MOBILE_APP_ORIGINS = ["capacitor://localhost"];
-
-/**
  * CORS (§39 de la demande) : liste configurable d'origines, jamais un
  * wildcard avec authentification. `FRONTEND_ORIGINS` est une liste séparée
  * par des virgules (voir .env.example).
@@ -27,10 +20,11 @@ app.use(
   "*",
   cors({
     origin: (origin) => {
-      const allowed = [...getEnv().FRONTEND_ORIGINS.split(",").map((o) => o.trim()), ...MOBILE_APP_ORIGINS];
+      // L'app mobile native (ball-manager-app) n'envoie pas d'en-tête Origin : CORS ne concerne que le web.
+      const allowed = getEnv().FRONTEND_ORIGINS.split(",").map((o) => o.trim());
       return origin && allowed.includes(origin) ? origin : "";
     },
-    // X-Personal-Link-Token : lien personnel hors URL (web, R-014) ; X-BM-As : personne active d'une session d'appareil (app iOS).
+    // X-Personal-Link-Token : lien personnel hors URL (web, R-014) ; X-BM-As : personne active d'une session d'appareil (app mobile).
     allowHeaders: ["Content-Type", "Authorization", "X-Personal-Link-Token", "X-BM-As"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   }),
