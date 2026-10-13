@@ -107,6 +107,26 @@ describe("jeton push (PUT / DELETE …/auth/session/push-token)", () => {
   });
 });
 
+describe("notification de test (POST …/auth/session/push-test)", () => {
+  it("cet iPhone seulement, jamais l'équipe ; sans clé APNs : not_configured", async () => {
+    expect((await pub("club-a", "/auth/session/push-test", { method: "POST" })).status).toBe(401);
+    const secret = await device(["token-lina-0000"]);
+    const none = await pub("club-a", "/auth/session/push-test", { method: "POST", headers: bearer(secret) });
+    expect(await none.json()).toEqual({ status: "no_token", reason: null });
+    await pub("club-a", "/auth/session/push-token", { method: "PUT", headers: bearer(secret), body: { token: DEVICE_2, environment: "production" } });
+    // Un autre iPhone de la même famille ne reçoit PAS le test.
+    await device(["token-lina-0000"], DEVICE_1, "production");
+    const ok = await pub("club-a", "/auth/session/push-test", { method: "POST", headers: bearer(secret) });
+    expect(await ok.json()).toEqual({ status: "sent", reason: null });
+    expect(apns.sent.map((s) => s.token)).toEqual([DEVICE_2]);
+    expect(apns.sent[0]!.message.path).toBe("/public/club-a/accueil");
+    expect(state.notificationOutbox).toHaveLength(0);
+    setPushSenderFactoryForTests(() => null);
+    const off = await pub("club-a", "/auth/session/push-test", { method: "POST", headers: bearer(secret) });
+    expect(await off.json()).toEqual({ status: "not_configured", reason: null });
+  });
+});
+
 describe("destinataires", () => {
   it("un appareil avec deux enfants convoqués : UNE notification", async () => {
     await device(["token-lina-0000", "token-hugo-0000"], DEVICE_1);

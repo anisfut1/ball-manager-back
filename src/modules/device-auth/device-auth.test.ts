@@ -18,6 +18,7 @@ vi.mock("../../db/client.js", () => ({
 }));
 
 const { app } = await import("../../app.js");
+const { pickerClubs } = await import("../../api/v1/index.js");
 
 const CLUB_A = { id: "aaaaaaaa-0000-0000-0000-000000000000", slug: "club-a", name: "Club A", short_name: null, logo_url: null, accent_color: null, timezone: "Europe/Paris", status: "active" as const, ffbb_club_id: "A1", ffbb_enabled: true, ffbb_next_sync_at: null };
 const CLUB_B = { ...CLUB_A, id: "bbbbbbbb-0000-0000-0000-000000000000", slug: "club-b", name: "Club B", ffbb_club_id: "B1" };
@@ -223,5 +224,13 @@ describe("liste des clubs (choix du club dans l'app)", () => {
   it("clubs actifs : nom, slug, logo seulement", async () => {
     const res = await app.request("/v1/public/clubs");
     expect(await json(res)).toEqual({ clubs: [{ slug: "club-a", name: "Club A", logoUrl: null }, { slug: "club-b", name: "Club B", logoUrl: null }] });
+  });
+  it("le club de démo (revue App Store) n'est jamais proposé, tri par nom", () => {
+    const list = pickerClubs([
+      { slug: "club-demo", name: "Club Démo Ball Manager" },
+      { slug: "sete", name: "SC Sète Basket" },
+      { slug: "agde", name: "Agde Basket" },
+    ]);
+    expect(list.map((c) => c.slug)).toEqual(["agde", "sete"]);
   });
 });

@@ -1,6 +1,6 @@
 import { OpenAPIRegistry, OpenApiGeneratorV3 } from "@asteasolutions/zod-to-openapi";
 import { AddSessionPeopleDtoSchema, AuthCodeDtoSchema, CreateAuthCodeDtoSchema, CreateDeviceSessionDtoSchema, DeviceSessionDtoSchema, ExchangeAuthCodeDtoSchema,
-  PutPushTokenDtoSchema, PublicClubListDtoSchema, SessionInfoDtoSchema, WebExchangeDtoSchema } from "./contracts/device-auth.js";
+  PutPushTokenDtoSchema, PushTestResultDtoSchema, PublicClubListDtoSchema, SessionInfoDtoSchema, WebExchangeDtoSchema } from "./contracts/device-auth.js";
 import { z } from "./contracts/zod.js";
 import { ClubDtoSchema, TeamDtoSchema, UpdateClubDtoSchema, CreateTeamDtoSchema, UpdateTeamDtoSchema } from "./contracts/clubs.js";
 import { MatchListItemDtoSchema, MatchDetailsDtoSchema, MatchesQueryDtoSchema, MatchesPaginationDtoSchema } from "./contracts/matches.js";
@@ -1325,6 +1325,7 @@ for (const space of ["club", "public"] as const) {
   registry.registerPath({ method: "post", path: `${base}/session/people`, security: deviceBearer, request: { params: clubSlugParam, body: jsonBody(AddSessionPeopleDtoSchema) }, responses: { 200: jsonResponse("Personne ajoutée à l'appareil", SessionInfoDtoSchema), ...errorResponses } });
   registry.registerPath({ method: "delete", path: `${base}/session/people/{licencieId}`, security: deviceBearer, request: { params: clubSlugParam.extend({ licencieId: z.string().uuid() }) }, responses: { 204: { description: "Personne retirée de l'appareil" }, ...errorResponses } });
   registry.registerPath({ method: "put", path: `${base}/session/push-token`, security: deviceBearer, request: { params: clubSlugParam, body: jsonBody(PutPushTokenDtoSchema) }, responses: { 204: { description: "Jeton APNs enregistré pour cette session" }, ...errorResponses, ...validationResponses } });
+  registry.registerPath({ method: "post", path: `${base}/session/push-test`, security: deviceBearer, request: { params: clubSlugParam }, responses: { 200: jsonResponse("Notification de test vers cet iPhone seulement (sent / not_configured / no_token / failed)", PushTestResultDtoSchema), ...errorResponses } });
   registry.registerPath({ method: "delete", path: `${base}/session/push-token`, security: deviceBearer, request: { params: clubSlugParam }, responses: { 204: { description: "Plus de notifications de ce club sur cet appareil" }, ...errorResponses } });
   registry.registerPath({ method: "post", path: `${base}/codes`, request: { params: clubSlugParam, body: jsonBody(CreateAuthCodeDtoSchema) }, responses: { 201: jsonResponse("Code d'autorisation (5 min, usage unique, lié au PKCE)", AuthCodeDtoSchema), ...errorResponses } });
   registry.registerPath({ method: "post", path: `${base}/token`, request: { params: clubSlugParam, body: jsonBody(ExchangeAuthCodeDtoSchema) }, responses: { 201: jsonResponse("Session d'appareil (ios)", DeviceSessionDtoSchema), 200: jsonResponse("Liens personnels pour la session web (web, lien de connexion)", WebExchangeDtoSchema), ...errorResponses } });

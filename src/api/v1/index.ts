@@ -62,13 +62,26 @@ v1Router.get("/me", requireAuth, async (c) => {
 });
 
 /**
+ * Clubs absents du choix du club dans l'app : le club de démonstration de la
+ * revue App Store (supabase/seed/demo_review_club.sql). Il reste joignable
+ * par son lien direct (/public/club-demo/…), jamais proposé aux vrais
+ * licenciés.
+ */
+export const CLUBS_HIDDEN_FROM_PICKER: ReadonlySet<string> = new Set(["club-demo"]);
+
+/** Clubs proposés dans l'app : sans les clubs cachés, triés par nom. */
+export function pickerClubs<T extends { slug: string; name: string }>(clubs: readonly T[]): T[] {
+  return clubs.filter((club) => !CLUBS_HIDDEN_FROM_PICKER.has(club.slug)).sort((a, b) => a.name.localeCompare(b.name, "fr"));
+}
+
+/**
  * GET /v1/public/clubs — clubs actifs (nom, slug, logo) pour le choix du club
  * dans l'app iOS. Mêmes informations que l'en-tête des pages publiques de
  * chaque club ; jamais de membre, de rôle ni de donnée FFBB.
  */
 v1Router.get("/public/clubs", async (c) => {
   const { data } = await createServiceSupabaseClient().from("clubs").select("slug, name, logo_url, status").eq("status", "active");
-  const clubs = ((data ?? []) as { slug: string; name: string; logo_url: string | null }[]).sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  const clubs = pickerClubs((data ?? []) as { slug: string; name: string; logo_url: string | null }[]);
   c.header("Cache-Control", "public, max-age=300");
   return c.json({ clubs: clubs.map((club) => ({ slug: club.slug, name: club.name, logoUrl: club.logo_url })) });
 });

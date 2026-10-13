@@ -98,6 +98,39 @@ export async function pushTargets(db: DbClient, clubId: string, licencieIds: rea
   return [...byToken.values()];
 }
 
+// ─── Test depuis l'app ──────────────────────────────────────────────────────
+
+export type PushTestStatus = "sent" | "not_configured" | "no_token" | "failed";
+
+/**
+ * « Envoyer une notification de test » (Profil de l'app) : UNIQUEMENT vers le
+ * jeton de CETTE session — jamais l'équipe, jamais un autre appareil. Dit
+ * aussi si le serveur voit la clé APNs (`not_configured`). Rien n'est mis en
+ * file : un test raté ne se renvoie pas tout seul.
+ */
+export async function sendTestPush(db: DbClient, session: { id: string; clubId: string }, now: Date = new Date()): Promise<{ status: PushTestStatus; reason: string | null }> {
+  const { data: row } = await db.from("device_push_tokens").select("token, environment").eq("session_id", session.id).is("revoked_at", null).maybeSingle();
+  const target = row as { token: string; environment: PushEnvironment } | null;
+  const sender = senderFactory();
+  if (!sender) return { status: "not_configured", reason: null };
+  try {
+    if (!target) return { status: "no_token", reason: null };
+    const { data: club } = await db.from("clubs").select("slug").eq("id", session.clubId).maybeSingle();
+    const slug = (club as { slug: string } | null)?.slug ?? "";
+    const result = await sender.send(target.token, target.environment, {
+      title: "Ball Manager",
+      body: "Les notifications fonctionnent sur cet iPhone.",
+      path: `/public/${encodeURIComponent(slug)}/accueil`,
+      threadId: "TEST",
+    });
+    if (result.ok) return { status: "sent", reason: null };
+    if (result.permanent) await db.from("device_push_tokens").update({ revoked_at: now.toISOString(), revoked_reason: result.reason.slice(0, 64) }).eq("token", target.token).is("revoked_at", null);
+    return { status: "failed", reason: result.reason.slice(0, 200) };
+  } finally {
+    sender.close();
+  }
+}
+
 // ─── File d'envoi ───────────────────────────────────────────────────────────
 
 export interface NotificationInput {
