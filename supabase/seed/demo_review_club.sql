@@ -1,11 +1,13 @@
--- Club de DÉMONSTRATION pour la revue App Store (ball-manager-web/docs/APP_STORE.md).
+-- Club de DÉMONSTRATION pour la revue App Store (ball-manager-app/docs/APP_STORE.md).
 -- PRÉPARÉ, NON APPLIQUÉ. Données 100 % fictives. Idempotent.
 --
--- Après application : dans l'espace club (admin plateforme), donner une
--- adresse email que VOUS lisez au licencié « Camille DEMO », puis demander
--- son lien depuis /public/club-demo/… (« Recevoir un lien »). Le lien reçu
--- est à coller dans les notes de revue App Store (l'app sait l'ouvrir :
--- « J'ai reçu un lien Ball Manager »). Ne JAMAIS commiter ce lien.
+-- Jamais proposé dans « Choisis ton club » de l'app (CLUBS_HIDDEN_FROM_PICKER,
+-- src/api/v1/index.ts) : joignable seulement par lien direct.
+--
+-- Après application : dans l'espace club (admin plateforme), générer le lien
+-- personnel de « Camille DEMO » (parent / joueur). Ce lien, ouvert sur
+-- l'iPhone, ouvre l'app déjà connectée (Universal Link). Il va UNIQUEMENT
+-- dans les notes de revue App Store Connect — ne JAMAIS le commiter.
 --
 -- Synchro FFBB désactivée (ffbb_enabled = false) : rien ne vient écraser ces données.
 -- Pour retirer le club : delete from public.clubs where slug = 'club-demo';  (cascade)
