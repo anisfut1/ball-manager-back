@@ -1,4 +1,5 @@
 import type { DbClient } from "../../db/client.js";
+import { links } from "../../links/links.js";
 import { appBaseUrl } from "../../auth/account-invites.js";
 import { buildDerogationRequestEmail, buildFbiDerogationDigestEmail, type ClubBranding } from "../../email/account-emails.js";
 import { isEmailConfigured, sendEmail } from "../../email/resend.js";
@@ -84,7 +85,7 @@ export async function notifyDerogationRequest(
           matchLabel: input.matchLabel,
           slotLabel: input.slotLabel,
           comment: input.comment,
-          link: `${base}/public/${encodeURIComponent(club.slug)}/derogations/${input.requestId}`,
+          link: links(base).derogation(club.slug, input.requestId),
         }),
       { clubId: input.clubId, requestId: input.requestId },
     );
@@ -127,7 +128,7 @@ export async function notifyFbiDerogationEvents(db: DbClient, clubId: string, ev
     const outcomes = fresh.filter((e) => e.kind === "outcome").map((e) => e.line);
     return await sendAll(
       recipients,
-      () => buildFbiDerogationDigestEmail({ club, incoming, outcomes, link: `${base}/public/${encodeURIComponent(club.slug)}/derogations` }),
+      () => buildFbiDerogationDigestEmail({ club, incoming, outcomes, link: links(base).derogations(club.slug) }),
       { clubId },
     );
   } catch (error) {

@@ -27,7 +27,7 @@ aucun module jusque-là) —, puis l'accès public sans compte (Scénario 9,
 réservée à `club_admin` uniquement (jamais `responsable_tables` : gestion
 d'identité, pas de postes), index UNIQUE PARTIEL (un seul jeton actif à la
 fois par licencié), et isolation cross-tenant. Migrée telle quelle depuis
-SCSB (voir `docs/MIGRATION.md`) et rejouée avec succès depuis ce
+ball-manager-web (voir `docs/MIGRATION.md`) et rejouée avec succès depuis ce
 repository. Elle n'a pas encore été rejouée via la stack Supabase CLI
 complète (`supabase test db`) — les deux chemins d'exécution sont
 documentés ci-dessous.

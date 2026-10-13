@@ -2,7 +2,7 @@
  * Recherche de son nom dans l'espace public (retour du club, 2026-10-08 :
  * « la personne met son nom et prénom en entier, peu importe l'ordre ; si
  * je tape "ansi abde meriuam", ça propose Anis »). Remplace l'annuaire
- * complet (risque R-013, docs/migration/11-init-repo-back.md §7 côté SCSB) :
+ * complet (risque R-013, docs/migration/11-init-repo-back.md §7 côté ball-manager-web) :
  * prénom ET nom obligatoires, au plus 5 propositions, jamais le nom complet.
  *
  * Fonctions pures, sans base : testées à part (name-search.test.ts).

@@ -5,7 +5,7 @@ import { conflict } from "../../api-error.js";
  * `claim_next_fbi_job(_for_club)` garantit qu'un club n'a JAMAIS deux jobs
  * `fbi_jobs` actifs (`claimed`/`running`) simultanément — un garde-fou
  * direct contre le blocage anti-bot FBI déjà constaté en production (voir
- * ProcessFbiJobsButton.tsx côté SCSB, incident du 2026-09-24 : ~190
+ * ProcessFbiJobsButton.tsx côté ball-manager-web, incident du 2026-09-24 : ~190
  * connexions FBI enchaînées sans pause).
  *
  * Les actions FBI SYNCHRONES (`respond-derogation.ts`, `check-derogation-

@@ -68,6 +68,6 @@ jamais son UUID (le slug seul figure dans le lien public).
 ## Frontend
 
 `/public/{clubSlug}/matchs` (liste) et `/public/{clubSlug}/matchs/{matchId}`
-(détail) côté SCSB, réutilisant les mêmes composants d'affichage que la vue
+(détail) côté ball-manager-web, réutilisant les mêmes composants d'affichage que la vue
 authentifiée (`MatchTitle`, `HomeMatchesAgenda`, `DerogationCard`) avec
 `isAdmin` figé à `false` — jamais un bouton d'action visible.

@@ -3,7 +3,7 @@ import type { ClubRole } from "../db/types.js";
 export type { ClubRole };
 
 /**
- * Copié depuis SCSB src/lib/permissions/roles.ts (module déjà pur, aucun
+ * Copié depuis ball-manager-web src/lib/permissions/roles.ts (module déjà pur, aucun
  * changement de logique). `club_admin` = tous les droits SUR UN CLUB,
  * distinct de `platform_admin` (opérateur de la plateforme, table séparée
  * `platform_admins`) — voir docs/MULTI_TENANCY.md.

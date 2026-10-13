@@ -1,7 +1,7 @@
 # Inventaire des routes de l'API
 
 > Fichier **généré** par `npm run docs:routes` (ops/docs/generate-routes-doc.ts) — ne pas modifier à la main.
-> 172 routes montées dans le code, 165 décrites dans le contrat OpenAPI (`/openapi.json`, `/docs`).
+> 180 routes montées dans le code, 173 décrites dans le contrat OpenAPI (`/openapi.json`, `/docs`).
 
 Accès : **Compte connecté** = JWT Supabase (`Authorization: Bearer`), droits vérifiés par club ; **Public** = sans compte ; **Public (lien perso si action)** = lecture libre, écriture avec le jeton du lien personnel ; **Secret cron** = `CRON_SECRET`.
 
@@ -201,6 +201,12 @@ Accès : **Compte connecté** = JWT Supabase (`Authorization: Bearer`), droits v
 |---|---|---|---|
 | GET | `/v1/me` | Compte connecté | Utilisateur courant |
 
+## Général — public
+
+| Méthode | Route | Accès | Description |
+|---|---|---|---|
+| GET | `/v1/public/clubs` | Public (lien perso si action) | Clubs actifs (nom, slug, logo) — choix du club dans l'app |
+
 ## Interne (tâches planifiées)
 
 | Méthode | Route | Accès | Description |
@@ -229,6 +235,18 @@ Accès : **Compte connecté** = JWT Supabase (`Authorization: Bearer`), droits v
 | Méthode | Route | Accès | Description |
 |---|---|---|---|
 | POST | `/v1/public/clubs/:clubSlug/access-requests` | Public (lien perso si action) | Demande transmise au club |
+
+## Public — auth
+
+| Méthode | Route | Accès | Description |
+|---|---|---|---|
+| POST | `/v1/public/clubs/:clubSlug/auth/codes` | Public (lien perso si action) | Code d'autorisation (5 min, usage unique, lié au PKCE) |
+| POST | `/v1/public/clubs/:clubSlug/auth/device-sessions` | Public (lien perso si action) | Session d'appareil (secret affiché une seule fois) |
+| DELETE | `/v1/public/clubs/:clubSlug/auth/session` | Compte connecté | Session révoquée |
+| GET | `/v1/public/clubs/:clubSlug/auth/session` | Compte connecté | Personnes de la session d'appareil |
+| POST | `/v1/public/clubs/:clubSlug/auth/session/people` | Compte connecté | Personne ajoutée à l'appareil |
+| DELETE | `/v1/public/clubs/:clubSlug/auth/session/people/:licencieId` | Compte connecté | Personne retirée de l'appareil |
+| POST | `/v1/public/clubs/:clubSlug/auth/token` | Public (lien perso si action) | Liens personnels pour la session web (web, lien de connexion) |
 
 ## Public — club
 

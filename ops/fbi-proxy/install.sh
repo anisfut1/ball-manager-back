@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Proxy à adresse IP fixe pour l'accès à FBI (voir docs/FBI.md « Proxy à IP fixe »).
 # À lancer UNE fois sur un VPS Ubuntu (22.04 / 24.04) :
-#   curl -fsSL https://raw.githubusercontent.com/anisfut1/club-manager-api/main/ops/fbi-proxy/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/anisfut1/ball-manager-back/main/ops/fbi-proxy/install.sh | sudo bash
 #
 # - Squid avec mot de passe (généré ici, jamais transmis ailleurs que sur cet écran).
 # - Destinations limitées aux sites FFBB (*.ffbb.com) en HTTPS : inutilisable pour autre chose.

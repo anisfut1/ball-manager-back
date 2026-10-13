@@ -110,7 +110,7 @@ describe("claimNextJobForClub", () => {
     expect(await claimNextJobForClub(supabase as any, "club-1", "admin-app#club-1#0")).toBeNull();
   });
 
-  it("renvoie null (jamais la ligne fantôme) quand PostgREST renvoie un objet aux champs tous null — régression 2026-09-24 : la boucle auto de SCSB ne s'arrêtait jamais toute seule sans ce garde-fou", async () => {
+  it("renvoie null (jamais la ligne fantôme) quand PostgREST renvoie un objet aux champs tous null — régression 2026-09-24 : la boucle auto de ball-manager-web ne s'arrêtait jamais toute seule sans ce garde-fou", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const supabase = makeFakeSupabase({ data: PHANTOM_ROW as any, error: null });
 

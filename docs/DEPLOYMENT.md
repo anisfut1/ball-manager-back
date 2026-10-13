@@ -6,19 +6,19 @@ serveur à provisionner (§ contrainte fondamentale de cette migration).
 ## Prérequis
 
 - Un projet Vercel (import direct du repository GitHub
-  `club-manager-api`, sans étape supplémentaire).
-- **Le même projet Supabase que le frontend `SCSB`** — pas un nouveau
+  `ball-manager-back`, sans étape supplémentaire).
+- **Le même projet Supabase que le frontend `ball-manager-web`** — pas un nouveau
   projet. La séparation introduite par cette migration concerne le code,
   jamais les données (§ instruction explicite de la demande).
 - Les migrations `supabase/migrations/` de ce repository doivent être
   appliquées sur ce projet Supabase (via `supabase db push` ou la CLI
-  habituelle) — elles reprennent l'historique complet depuis SCSB, jamais
+  habituelle) — elles reprennent l'historique complet depuis ball-manager-web, jamais
   fusionnées en un seul fichier (voir `docs/MIGRATION.md`).
 
 ## Étapes
 
 1. **Importer** le repository dans Vercel (Nouveau projet → sélectionner
-   `club-manager-api`). Aucune configuration de build particulière n'est
+   `ball-manager-back`). Aucune configuration de build particulière n'est
    requise au-delà de ce que `vercel.json` fournit déjà.
 2. **Renseigner les variables d'environnement** (voir la liste complète
    ci-dessous et `.env.example`) dans les réglages du projet Vercel —
@@ -28,7 +28,7 @@ serveur à provisionner (§ contrainte fondamentale de cette migration).
    `functions."api/index.ts".maxDuration: 300`) et active automatiquement
    les 4 crons déclarés dans `vercel.json`.
 4. **Configurer `FRONTEND_ORIGINS`** avec l'URL du déploiement Vercel du
-   frontend SCSB (jamais de wildcard, voir `docs/API.md`).
+   frontend ball-manager-web (jamais de wildcard, voir `docs/API.md`).
 5. **Vérifier** `GET /health` (sans authentification) puis
    `GET /openapi.json`.
 
@@ -89,7 +89,7 @@ présents) mais échouera silencieusement en production avec `ENOENT`.
 
 | Variable | Rôle |
 |---|---|
-| `SUPABASE_URL` | URL du projet Supabase (le même que SCSB) |
+| `SUPABASE_URL` | URL du projet Supabase (le même que ball-manager-web) |
 | `SUPABASE_ANON_KEY` | Clé anonyme — utilisée avec le JWT utilisateur pour les requêtes "au nom de l'utilisateur" (voir `docs/AUTH.md`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Clé service role — jamais exposée au frontend, utilisée uniquement pour les tables sans policy `authenticated` et Storage |
 | `FBI_CREDENTIALS_ENCRYPTION_KEY` | Clé AES-256-GCM (32 octets) pour `fbi_credentials` |
@@ -159,6 +159,6 @@ ce workflow est un RELAI plus fréquent, jamais un remplacement.
 - Ne crée pas de nouveau projet Supabase.
 - Ne provisionne rien en dehors de Vercel (pas de VM, pas de container
   long-running, pas de queue externe).
-- Le frontend SCSB n'est pas concerné par ce déploiement — c'est un
+- Le frontend ball-manager-web n'est pas concerné par ce déploiement — c'est un
   projet Vercel strictement séparé (§ "Ne modifie PAS encore le
   frontend").

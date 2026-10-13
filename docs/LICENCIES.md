@@ -116,10 +116,10 @@ filet de sécurité optionnel.
 (`modules/clubs/routes.ts`) : une simple URL validée, jamais un pipeline
 d'upload de fichier dans ce backend.
 
-## Frontend (SCSB)
+## Frontend (ball-manager-web)
 
 - `GET /c/:clubSlug/joueurs` — roster du club, tri alphabétique, lien vers
-  chaque fiche (`features/licencies` n'existe pas côté SCSB, tout vit dans
+  chaque fiche (`features/licencies` n'existe pas côté ball-manager-web, tout vit dans
   `app/c/[clubSlug]/joueurs/`).
 - `GET /c/:clubSlug/joueurs/:licencieId` — la fiche joueur elle-même :
   identité, tableau des matchs avec statistiques par match, et le
@@ -127,7 +127,7 @@ d'upload de fichier dans ce backend.
   quand `canEdit` — le `mode` ("admin" vs "self") est décidé CÔTÉ SERVEUR
   dans la page (`isClubAdmin(club.roles)` sinon `profile.isSelf`), jamais
   recalculé côté client : le formulaire n'affiche que les champs pertinents,
-  mais c'est de toute façon club-manager-api qui reste la seule source de
+  mais c'est de toute façon ball-manager-back qui reste la seule source de
   vérité sur ce qui est réellement accepté (rejet 400 sinon).
 - Depuis l'onglet "Statistiques" d'un match (`matchs/[id]/page.tsx`), le
   nom d'un·e joueur·se devient un lien vers sa fiche dès que
@@ -157,9 +157,9 @@ jpeux glisser les cartes pr les mettre d'une equipe a lautre"**.
 
 `POST /v1/clubs/:clubId/licencies/import` (`club_admin`) reçoit un tableau
 de lignes déjà normalisées en JSON (le parsing du fichier XLSX/CSV réel se
-fait côté SCSB, jamais dans ce backend). Colonnes RÉELLES confirmées par
+fait côté ball-manager-web, jamais dans ce backend). Colonnes RÉELLES confirmées par
 l'export fourni : "N° national" (`ffbbLicenceId`), "Numéro" (`licenseNumber`),
-"Nom"/"Prénom", "Né(e) le" (converti en ISO côté SCSB), "Catégorie"
+"Nom"/"Prénom", "Né(e) le" (converti en ISO côté ball-manager-web), "Catégorie"
 (`categoryLabel`), "Sexe".
 
 **Dédoublonnage** : `ffbbLicenceId` ("N° national") est LA clé stable d'une
@@ -177,7 +177,7 @@ licencié existant, et n'assigne JAMAIS `teamId` à l'insertion (toujours
 `null`) — l'export FBI ne dit pas à quelle équipe DU CLUB (il peut y en
 avoir plusieurs par catégorie, ex. SM1/SM2/SF, voir docs/TEAMS.md)
 appartient une personne. L'affectation reste un geste manuel exclusif de
-`club_admin`, via le glisser-déposer côté SCSB (`PATCH .../profile` avec
+`club_admin`, via le glisser-déposer côté ball-manager-web (`PATCH .../profile` avec
 `teamId`, déjà existant — aucune nouvelle route nécessaire pour ça).
 
 Les 8 licenciés déjà auto-provisionnés (voir plus haut) avant cette
@@ -218,7 +218,7 @@ TOUS les licenciés sans équipe (`team_id is null`) du club en un seul appel
 
 Reste un point de DÉPART, jamais une vérité définitive : un licencié déjà
 affecté (même approximativement) n'est JAMAIS réécrit par cette route, et
-le glisser-déposer (`PATCH .../profile`, page /joueurs côté SCSB) reste le
+le glisser-déposer (`PATCH .../profile`, page /joueurs côté ball-manager-web) reste le
 moyen de corriger un rattachement approximatif au cas par cas.
 
 ## Suppression définitive — "faut aussi un bouton pour supprimer un licencié"

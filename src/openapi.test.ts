@@ -4,7 +4,7 @@ import { generateOpenApiDocument } from "./openapi.js";
 /**
  * §26 de la demande : garantit que toute route/DTO nouvellement ajoutée
  * est RÉELLEMENT présente dans le document généré — jamais un endpoint qui
- * existe côté handler mais pas dans le contrat que SCSB génère avec
+ * existe côté handler mais pas dans le contrat que ball-manager-web génère avec
  * `npm run api:generate`.
  */
 describe("generateOpenApiDocument", () => {
@@ -144,9 +144,19 @@ describe("generateOpenApiDocument", () => {
     expect(doc.paths["/v1/public/clubs/{clubSlug}/matches/{matchId}/derogation"]).not.toHaveProperty("post");
   });
 
+  it("espace public : `token` (query) jamais obligatoire — session d'appareil ou en-tête X-Personal-Link-Token acceptés (apps mobiles)", () => {
+    const required: string[] = [];
+    for (const [path, methods] of Object.entries(doc.paths)) {
+      for (const [method, op] of Object.entries(methods as Record<string, { parameters?: { name: string; required?: boolean }[] }>)) {
+        if ((op.parameters ?? []).some((p) => p.name === "token" && p.required)) required.push(`${method} ${path}`);
+      }
+    }
+    expect(required).toEqual([]);
+  });
+
   it("génère un document valide (openapi 3.0.0, titre, au moins 15 routes)", () => {
     expect(doc.openapi).toBe("3.0.0");
-    expect(doc.info.title).toBe("club-manager-api");
+    expect(doc.info.title).toBe("ball-manager-back");
     expect(Object.keys(doc.paths).length).toBeGreaterThanOrEqual(15);
   });
 

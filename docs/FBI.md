@@ -187,7 +187,7 @@ maintenant `LOGIN_FAILED` explicitement. Couvert par 2 nouveaux tests
 
 **Prochaine étape** : relancer "Tester la connexion" depuis
 `/admin/intégrations/fbi`, puis lire le message complet dans les logs
-Vercel de club-manager-api pour voir exactement quel formulaire/champ a
+Vercel de ball-manager-back pour voir exactement quel formulaire/champ a
 été détecté et pourquoi le site l'a refusé — jamais deviner un nouveau
 nom de champ sans ce retour, comme pour FFBB.
 
@@ -290,7 +290,7 @@ aucun trouvé`), le correctif est un no-op ici (harmless, mais pas la
 solution). Le club confirme via une question directe que ces mêmes
 identifiants fonctionnent en se connectant à la main sur
 `extranet.ffbb.com/fbi`, écartant un vrai mot de passe incorrect ou une
-erreur de chiffrement côté club-manager-api (le round-trip AES-256-GCM
+erreur de chiffrement côté ball-manager-back (le round-trip AES-256-GCM
 est testé unitairement — unicode, chaîne vide, isolation par AAD — et
 toute incohérence de clé/AAD lèverait `DecryptionError`, une erreur
 distincte, jamais un `LOGIN_FAILED` silencieux ; la longueur du
@@ -334,7 +334,7 @@ protection si c'en est une ; un `LOGIN_FAILED` du navigateur reste
 possible (vraiment mauvais identifiants), mais devient alors un signal
 nettement plus fiable que celui du client HTTP seul. **Nécessite
 `BROWSER_FBI_ENABLED=true` en production** (variable d'environnement
-Vercel côté club-manager-api) pour se déclencher — à vérifier/activer
+Vercel côté ball-manager-back) pour se déclencher — à vérifier/activer
 avant de retester. Pas de nouveau test route-level ajouté (la route
 `/fbi/test` n'a aucune couverture existante nécessitant de mocker
 `HttpFbiClient`/`fbi_jobs` — lift disproportionné pour ce correctif
@@ -372,7 +372,7 @@ type d'appel, plus de `202`/`jobId`, plus besoin du cron. Vérifié :
 `maxDuration: 300` (vercel.json) laisse largement la place pour un
 login navigateur (`launchServerlessBrowser` + `BrowserFbiClient.login`),
 qui prend quelques secondes en pratique (voir déclenchements
-précédents). `TestFbiConnectionButton.tsx` (SCSB) n'a nécessité AUCUN
+précédents). `TestFbiConnectionButton.tsx` (ball-manager-web) n'a nécessité AUCUN
 changement : il gérait déjà les deux cas (`result.jobId` → polling,
 sinon → résultat direct), donc le cas direct fonctionne immédiatement.
 
@@ -426,7 +426,7 @@ dans `/internal/cron/fbi-jobs` : factorisée dans `jobs/process-batch.ts`
 (`processJobBatch`), réutilisée par le cron (avec `claimNextJob`, global)
 et par la nouvelle route (avec `claimNextJobForClub(clubId)`, scopée).
 
-Côté SCSB : `ProcessFbiJobsButton.tsx`, nouvelle carte "Documents
+Côté ball-manager-web : `ProcessFbiJobsButton.tsx`, nouvelle carte "Documents
 e-Marque en attente" sur `/admin/intégrations/fbi` (visible dès que FBI
 est configuré), expliquant explicitement que "Connecté" ne récupère rien
 tout seul. Réponse `{ claimed, succeeded, failed }` affichée directement
@@ -446,10 +446,10 @@ diagnostics distincts, tous deux constatés en production le 2026-09-24 :
 
 1. **Timeout client trop court.** `POST .../fbi/process-jobs` réussissait
    bien côté serveur (logs : job réclamé, Chromium lancé, documents
-   téléchargés — ~28s pour UN SEUL job) mais SCSB affichait "Traitement
+   téléchargés — ~28s pour UN SEUL job) mais ball-manager-web affichait "Traitement
    impossible" : le client HTTP (`src/lib/api/client.ts`) avait un
    timeout fixe de 20s, systématiquement dépassé par un lot de jobs
-   navigateur. Corrigé côté SCSB : `timeoutMs` configurable par appel
+   navigateur. Corrigé côté ball-manager-web : `timeoutMs` configurable par appel
    (`ApiRequestInit`), `processFbiJobs` passe désormais 280s (sous
    `maxDuration: 300`).
 
@@ -465,7 +465,7 @@ diagnostics distincts, tous deux constatés en production le 2026-09-24 :
      stats/officiels persistés, donc affichables) qu'après cette seconde
      étape — jamais automatique en dehors du cron. Constaté : 14
      documents `downloaded`, `0` ligne dans `emarque_imports`.
-   - `currentSeasonStart()` (SCSB, `/matchs` et `/admin/sync`) filtre par
+   - `currentSeasonStart()` (ball-manager-web, `/matchs` et `/admin/sync`) filtre par
      défaut sur la saison en cours (1er août → ...). La saison 2026-2027
      vient de commencer (aucun match encore joué dessus : `0` match
      `played` depuis le 1er août 2026) — les 97 matchs déjà joués de la
@@ -483,7 +483,7 @@ diagnostics distincts, tous deux constatés en production le 2026-09-24 :
    10` : pas de navigateur ici, un OCR/PDF coûte nettement moins cher
    qu'un login+scrape FBI, d'où un lot plus grand). Le cron
    (`/internal/cron/emarque-parse`) continue d'appeler la fonction SANS
-   options (tout traiter, tous clubs). Côté SCSB : `ParseFbiDocumentsButton.tsx`,
+   options (tout traiter, tous clubs). Côté ball-manager-web : `ParseFbiDocumentsButton.tsx`,
    deuxième bouton dans la même carte "Documents e-Marque en attente",
    étiquetée en deux étapes numérotées (1. Télécharger / 2. Traiter).
 
@@ -554,7 +554,7 @@ inertes (jamais matchés par `parseDownloadedEmarqueDocuments`, qui ne
 regarde que `type = emarque_zip`), donc sans risque immédiat, mais
 polluent `match_documents`. Nettoyage différé, pas demandé.
 
-**Incident — la boucle auto (§10 de la demande, SCSB) a fait échouer ~190
+**Incident — la boucle auto (§10 de la demande, ball-manager-web) a fait échouer ~190
 connexions FBI en quelques minutes.** Livré sans aucun garde-fou de
 rythme : `ProcessFbiJobsButton` rappelait `POST .../fbi/process-jobs` en
 boucle immédiatement après chaque réponse, sans pause. Constaté en
@@ -689,7 +689,7 @@ silencieux) est validé ; seule la fragilité inhérente d'un numéro à un
 seul chiffre reste en jeu.
 
 **Quinzième déclenchement — "3 jobs traités, 3 réussis" affiché côté
-SCSB alors qu'un seul avait réellement abouti.** Après déploiement des
+ball-manager-web alors qu'un seul avait réellement abouti.** Après déploiement des
 correctifs ci-dessus, le club a reclique sur "Traiter les jobs FBI en
 attente" : le bouton a affiché un succès complet pour un lot de 3, mais
 les logs Vercel montraient deux `FbiError EMARQUE_MATCH_PAGE_NOT_REACHED`
@@ -706,7 +706,7 @@ l'appel `await processXxxJob(...)` se terminait SANS lever d'exception —
 confondant "n'a pas crashé" avec "a réellement réussi". Un job simplement
 replanifié (page introuvable, rien à télécharger pour l'instant) se
 comptait donc TOUJOURS comme un succès dans le résultat agrégé renvoyé à
-SCSB, même si la vraie ligne `fbi_jobs` repassait en `pending`.
+ball-manager-web, même si la vraie ligne `fbi_jobs` repassait en `pending`.
 
 **Corrigé** : les deux fonctions renvoient maintenant `Promise<boolean>`
 (`true` UNIQUEMENT sur le chemin qui atteint réellement `status:
@@ -1087,7 +1087,7 @@ correctif précédent (dump des boutons + attente réseau) :
    **Corrigé** : `CLUB_JOB_BATCH_SIZE` (`routes.ts`) et `JOB_BATCH_SIZE`
    (`api/internal/index.ts`, cron) réduits de 3 à 1 — un seul job réel
    par invocation, largement sous `maxDuration: 300`. Le bouton "Traiter
-   les jobs FBI en attente" boucle déjà automatiquement côté SCSB, donc
+   les jobs FBI en attente" boucle déjà automatiquement côté ball-manager-web, donc
    aucune perte fonctionnelle. **ET** : migration
    `20260924140000_fbi_jobs_claim_stale_recovery.sql` — la garde "un seul
    job actif par club" des deux fonctions `claim_next_fbi_job*` n'exclut
@@ -1321,7 +1321,7 @@ concrètes réduisent quand même le coût de chaque cycle :
    dashboard peut lire et coller manuellement à chaque itération.
 
 Le club doit toujours déclencher le job (bouton "Traiter les jobs FBI en
-attente" côté SCSB) — ça, rien ne peut le remplacer depuis cet
+attente" côté ball-manager-web) — ça, rien ne peut le remplacer depuis cet
 environnement — mais le RÉSULTAT (succès, échec dur, ou "aucun document
 retenu" avec sa trace complète incluant maintenant la capture réseau)
 devient consultable directement, sans étape de copier-coller.
@@ -1449,20 +1449,20 @@ build Vercel).**
    variante réellement choisie à l'exécution (qui peut d'ailleurs varier
    selon la version exacte du runtime Node/V8 de la Lambda).
 3. **Le modèle de langue OCR (`fra.traineddata`) n'a en réalité JAMAIS été
-   porté depuis SCSB lors de la migration vers ce repo — bug distinct,
+   porté depuis ball-manager-web lors de la migration vers ce repo — bug distinct,
    resté invisible car jamais atteint avant que le point 2 ne soit
    corrigé.** `pdf-raster-ocr-extractor.ts` pointait
    `OCR_LANG_PATH` vers `src/server/emarque/ocr-data` — une convention
-   Next.js de l'ancien monolithe SCSB (répertoire déclaré via
+   Next.js de l'ancien monolithe ball-manager-web (répertoire déclaré via
    `next.config.ts#outputFileTracingIncludes`, voir l'historique Git de
-   SCSB, commit `5db6b6a`), jamais adaptée à la structure de
-   `club-manager-api` (pas de `src/server/`, voir `ARCHITECTURE.md`) ni
+   ball-manager-web, commit `5db6b6a`), jamais adaptée à la structure de
+   `ball-manager-back` (pas de `src/server/`, voir `ARCHITECTURE.md`) ni
    au mécanisme d'inclusion propre à ce repo (`vercel.json`, pas
    `next.config.ts`) — ce dossier n'a jamais existé ici.
 
 **Corrigé** (les trois, docs/EMARQUE.md pour le détail) :
 - `fra.traineddata` (+ son `README.md`, licence Apache 2.0,
-  `tesseract-ocr/tessdata_fast`) porté depuis l'historique Git de SCSB
+  `tesseract-ocr/tessdata_fast`) porté depuis l'historique Git de ball-manager-web
   vers `src/integrations/emarque/ocr-data/` (checksum SHA-256 vérifié
   identique à l'original) — emplacement cohérent avec la structure de ce
   repo (sibling de `extractors/`, `normalizers/`, etc.), `OCR_LANG_PATH`
@@ -1478,10 +1478,10 @@ Aucun de ces trois bugs ne remet en cause le correctif FBI du
 déclenchement précédent : la découverte et le téléchargement du document
 e-Marque fonctionnent bout en bout en production, confirmé sur preuve
 (n°1481). Ce qui restait cassé se situait entièrement en aval, dans le
-pipeline de parsing PDF/OCR — hérité verbatim de SCSB (§ "Ce module est
+pipeline de parsing PDF/OCR — hérité verbatim de ball-manager-web (§ "Ce module est
 un report quasi verbatim", docs/EMARQUE.md) sans qu'aucun document réel
 n'ait jamais auparavant atteint cette étape en production sur
-`club-manager-api` pour révéler ces deux angles morts de la migration.
+`ball-manager-back` pour révéler ces deux angles morts de la migration.
 
 **Trente-et-unième déclenchement — le premier vrai document "résumé" de
 production révèle deux bugs dans la calibration des zones OCR (jamais
@@ -1571,7 +1571,7 @@ directeur reste `null` plutôt qu'une valeur devinée pour tout le reste.
 **Trente-deuxième déclenchement — le correctif précédent tourne bien en
 production (les valeurs affichées correspondent exactement à ce qui avait
 été validé localement), mais 12 des 15 joueurs de la rencontre n°1481
-manquaient encore entièrement de l'onglet "Statistiques" côté SCSB.**
+manquaient encore entièrement de l'onglet "Statistiques" côté ball-manager-web.**
 Root-cause, PAS un nouveau bug OCR : `mergePlayersWithStats` (`merge.ts`)
 conservait bien une ligne de statistiques "resume" sans joueur
 correspondant dans l'effectif "feuillematch" (comportement déjà testé et
@@ -1859,7 +1859,7 @@ Non développé (§60/§40/§41 de la demande — pas de module tables de marque
 ni de dérogations à ce stade). Un export XLSX des dérogations et des
 routes AJAX de consultation (ex. `afficherLicenceStatistiqueAjax.fbi`,
 classée READ_ONLY par `action-classification.ts`) ont été rapportés lors
-d'un spike antérieur côté SCSB (`docs/FBI_AUTHENTICATED_SPIKE.md`, jamais
+d'un spike antérieur côté ball-manager-web (`docs/FBI_AUTHENTICATED_SPIKE.md`, jamais
 confirmé indépendamment). Point d'extension prévu mais non implémenté :
 une méthode `listDerogations()` sur l'interface `FbiAutomationClient`.
 
@@ -1947,7 +1947,7 @@ permettre le rapprochement.
   désormais aussi les anomalies `fbi_schedule_discrepancies` ouvertes, à
   côté des anomalies e-Marque existantes (`IssueDto.integration` étendu à
   `"fbi_schedule"`, `matchId` devenu nullable pour `missing_in_ffbb`) —
-  même page /admin/issues côté SCSB, aucune nouvelle UI dédiée nécessaire.
+  même page /admin/issues côté ball-manager-web, aucune nouvelle UI dédiée nécessaire.
 
 **CONFIRMÉ en production le 2026-09-25** : le club a lancé le bouton
 "Vérifier le calendrier" contre son vrai compte FBI (club SC Sète Basket) —
@@ -1983,7 +1983,7 @@ calendrier ci-dessus, sur la page /admin/issues :
    /v1/clubs/:clubId/issues` filtre désormais TOUTES les anomalies liées à
    un match (`emarque_import_error`/`emarque_needs_review`,
    `fbi_schedule_mismatch`/`fbi_schedule_missing_in_fbi`) à `match_datetime
-   >= currentSeasonStart()` (`src/season.ts`, même formule que SCSB —
+   >= currentSeasonStart()` (`src/season.ts`, même formule que ball-manager-web —
    1er août). `fbi_schedule_missing_in_ffbb` (pas de `matchId`, donc pas de
    date connue côté FFBB) reste toujours affichée : elle reflète l'état
    ACTUEL du scrape FBI, jamais une donnée historique.
@@ -2135,7 +2135,7 @@ départ, pas seulement une optimisation :
   match FFBB correspondant (`matchId`/`opponentName`/`matchDatetime`) ;
   jamais un SELECT direct côté frontend.
 
-Côté SCSB : bouton "Vérifier toutes les dérogations" (Intégrations → FBI,
+Côté ball-manager-web : bouton "Vérifier toutes les dérogations" (Intégrations → FBI,
 `CheckAllDerogationsButton.tsx`) et page `/admin/derogations` listant le
 résultat, chaque ligne liée à son match. Carte "Dérogations" sur le
 dashboard (club_admin uniquement) plutôt qu'un doublon de la carte
@@ -2839,7 +2839,7 @@ DataTables (numéro `null`) est appliqué directement dans
 via `fetchDerogationForMatch` (bouton "Vérifier sur FBI", UN SEUL match à
 la fois — jamais un problème de volume, `fetchDerogationDetailForRow`/
 `derogationRowDetailHref`/`fetchDerogationDetailByHref` restent
-utilisées par cette seule méthode). Copie SCSB (page Dérogations, page
+utilisées par cette seule méthode). Copie ball-manager-web (page Dérogations, page
 Intégrations FBI) à revérifier : elle affirmait à tort depuis le
 neuvième round que le bulk ramène aussi le détail.
 
@@ -2884,7 +2884,7 @@ exécution, avant de deviner une treizième fois :
   (`Map` par numéro avant de renvoyer) — une VRAIE dérogation n'a qu'un
   numéro, jamais deux lignes pour la même rencontre. Ne résout pas la
   cause racine (pourquoi une page est relue), mais élimine son symptôme
-  le plus visible côté SCSB (des doublons dans `/admin/derogations`).
+  le plus visible côté ball-manager-web (des doublons dans `/admin/derogations`).
 
 **Ce qui reste à vérifier sur la PROCHAINE exécution** (lire
 `fbi_jobs.result.passDiagnostics[0]` directement en base) : `pageCount`
@@ -2954,7 +2954,7 @@ directe : le onzième round (timeout Vercel) avait retiré tout détail par
 ligne du bulk, remplacé `fetchAllDerogations` par la même mécanique
 "liste seule" que `fetchScheduleRows` — un compromis délibéré à l'époque
 ("`ca doit pas bloquer`"), mais qui casse l'affichage de
-`DerogationsList.tsx` (SCSB) pour CHAQUE dérogation, jamais seulement au
+`DerogationsList.tsx` (ball-manager-web) pour CHAQUE dérogation, jamais seulement au
 clic "Vérifier sur FBI" d'un match précis. Un échange non voulu par le
 club : le compromis n'était acceptable QUE tant qu'il restait implicite,
 jamais annoncé comme "plus de détail du tout" à l'utilisateur final.
@@ -3234,7 +3234,7 @@ dérogation — jamais dédupliquées par rencontre.
   d'`idDerogation` (repli composite si absent). `match_id` reste
   obligatoire mais n'est plus unique : une rencontre peut désormais avoir
   plusieurs lignes `fbi_derogation_checks`.
-- API/SCSB : `DerogationListItemDto` gagne un champ `id` (la ligne
+- API/ball-manager-web : `DerogationListItemDto` gagne un champ `id` (la ligne
   `fbi_derogation_checks`, jamais `matchId` comme clé — une rencontre peut
   en avoir plusieurs). `DerogationsList.tsx` clé désormais ses cartes par
   `id` et affiche la "Date de dépôt" pour les distinguer visuellement
@@ -3502,7 +3502,7 @@ réelle et engageante envers un tiers (le club adverse, potentiellement
 l'organisme dirigeant), jamais annulable depuis cet outil une fois
 confirmée par FBI. Construit avec deux garde-fous que la phase 1 n'avait
 pas besoin d'avoir :
-1. Une confirmation explicite côté SCSB avant tout envoi (jamais un simple
+1. Une confirmation explicite côté ball-manager-web avant tout envoi (jamais un simple
    clic direct sur "Accepter"/"Refuser").
 2. Une trace d'audit systématique (`fbi_derogation_responses` — qui, quand,
    quelle décision, ce que FBI a RÉELLEMENT renvoyé), écrite AVANT de
@@ -3561,7 +3561,7 @@ immédiat de `fbi_derogation_checks` via `fetchDerogationForMatch` dans LA
 MÊME session, le tout dans une seule requête HTTP.
 
 `actionRequired` revalidé CÔTÉ SERVEUR dans `respondToDerogationForClub`
-(jamais confiance dans le client) : le bouton ne doit exister côté SCSB
+(jamais confiance dans le client) : le bouton ne doit exister côté ball-manager-web
 que quand c'est vrai, mais une requête directe à cette route sans repasser
 par l'UI ne doit jamais pouvoir soumettre une réponse pour une dérogation
 qui n'attend pas celle du club.
@@ -3715,21 +3715,21 @@ n'avait jamais pu répercuter ce changement dans `matches`).
 
 Bug séparé constaté le même jour : le bouton "Relancer maintenant"
 affichait "Synchronisation impossible. Réessaie." (message de repli côté
-SCSB pour toute exception qui n'est pas une `ApiError` — donc un timeout
+ball-manager-web pour toute exception qui n'est pas une `ApiError` — donc un timeout
 client, jamais une vraie erreur métier renvoyée par l'API) alors que
 `sync_runs.status` passait bien à `success` côté serveur. `syncFfbb`
 (`integrations/ffbb/sync.ts`) traite chaque match du club un par un
 (lecture + upsert + historique, plusieurs aller-retours Postgres par
 match) — largement au-delà des 20s de timeout par défaut du client HTTP
-SCSB (`src/lib/api/client.ts`) dès que le club a plusieurs centaines de
+ball-manager-web (`src/lib/api/client.ts`) dès que le club a plusieurs centaines de
 matchs sur la saison. Même classe de bug déjà corrigée une première fois
 pour `.../fbi/process-jobs` (voir son commentaire dans `src/lib/api/integrations.ts`
-côté SCSB).
+côté ball-manager-web).
 
-**Corrigé côté SCSB uniquement** (`triggerFfbbSync`, `src/lib/api/integrations.ts`) :
+**Corrigé côté ball-manager-web uniquement** (`triggerFfbbSync`, `src/lib/api/integrations.ts`) :
 `timeoutMs: 280_000`, même valeur et même marge sous `maxDuration: 300`
 (vercel.json) que `processFbiJobs`/`checkAllDerogations`. Aucun changement
-requis côté club-manager-api — la route elle-même a toujours réussi, seul
+requis côté ball-manager-back — la route elle-même a toujours réussi, seul
 le client abandonnait trop tôt.
 
 ## Salle FBI tronquée qui écrasait notre libellé complet — "les matchs sont plus a clavel ou lido"
@@ -3737,7 +3737,7 @@ le client abandonnait trop tôt.
 Constaté en production le 2026-09-28, en même temps que le job bloqué
 ci-dessus : une fois le rapprochement calendrier débloqué, le club a
 signalé que ses matchs à domicile n'apparaissaient plus dans les colonnes
-"Gymnase Maurice Clavel"/"Complexe sportif du Lido" côté SCSB (rendu
+"Gymnase Maurice Clavel"/"Complexe sportif du Lido" côté ball-manager-web (rendu
 agenda par salle) — tous tombaient dans "Autre salle" alors que
 `venue_raw_label` était correct en base au démarrage de la session.
 
@@ -3813,7 +3813,7 @@ ce club, **uniquement** s'il est dans la même fenêtre de fraîcheur de 10
 minutes que la garde de claim elle-même (`findActiveFbiJob`,
 `modules/integrations/routes.ts`) : un job plus vieux que ça a forcément
 été tué par un timeout/crash, jamais affiché comme "en cours" (ce serait
-mentir, et ça ne bloque déjà plus la file côté claim). Affiché côté SCSB
+mentir, et ça ne bloque déjà plus la file côté claim). Affiché côté ball-manager-web
 en bandeau sur `/admin/integrations/fbi` ("En cours : ... — depuis X min").
 Rendu côté serveur (page non auto-rafraîchie) : un rechargement de page
 suffit à revoir l'état à jour, pas de polling client pour un simple
@@ -3868,7 +3868,7 @@ Constaté le 2026-10-06 : la plupart des essais de l'heure échouaient sur « Pa
 
 Mesuré le 2026-10-06 : FBI ignore par moments les connexions venant de Vercel (`ERR_CONNECTION_TIMED_OUT` dès la page de connexion), alors qu'il répond en 0,6 s à une autre machine au même instant. Correctif : tout le trafic navigateur vers FBI passe par un VPS à adresse fixe (`FBI_PROXY_URL`, voir plus haut).
 
-Installation sur le VPS (Ubuntu 22.04/24.04), une commande : `curl -fsSL https://raw.githubusercontent.com/anisfut1/club-manager-api/main/ops/fbi-proxy/install.sh | sudo bash`.
+Installation sur le VPS (Ubuntu 22.04/24.04), une commande : `curl -fsSL https://raw.githubusercontent.com/anisfut1/ball-manager-back/main/ops/fbi-proxy/install.sh | sudo bash`.
 
 Le script `ops/fbi-proxy/install.sh` :
 - installe Squid avec authentification (mot de passe aléatoire généré sur le VPS, affiché uniquement à l'écran et gardé dans `/root/fbi-proxy-url.txt`) ;

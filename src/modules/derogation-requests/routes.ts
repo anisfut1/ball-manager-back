@@ -19,6 +19,8 @@ import { canCreateForTeam, canManageRequests, canPerformAction, canPropose, canC
 import { CreateDerogationDtoSchema } from "../../contracts/derogations.js";
 import { createDerogationForClub } from "../derogations/create-derogation.js";
 import { notifyDerogationRequest } from "./notify.js";
+import { notify } from "../push/service.js";
+import { paths } from "../../links/links.js";
 import {
   REQUEST_COLUMNS,
   buildDetail,
@@ -402,6 +404,19 @@ export async function handleAction(ctx: Ctx, requestId: string, rawBody: unknown
   await insertMessage(ctx.db, { club_id: ctx.clubId, request_id: row.id, ...authorColumns(ctx), author_display_name: author.name, author_role_label: roleLabel, body: meta.text(author.name), message_type: "SYSTEM", event: meta.event });
   if (body.data.message) {
     await insertMessage(ctx.db, { club_id: ctx.clubId, request_id: row.id, ...authorColumns(ctx), author_display_name: author.name, author_role_label: roleLabel, body: body.data.message, message_type: "USER" });
+  }
+
+  // Push au coach qui a fait la demande, quand c'est quelqu'un d'autre qui la fait avancer.
+  if (action !== "CANCEL" && row.created_by_licencie_id && row.created_by_licencie_id !== ctx.actor.licencieId) {
+    await notify(ctx.db, {
+      clubId: ctx.clubId,
+      kind: "DEROGATION_UPDATED",
+      dedupeKey: `derogation:${row.id}:${to}:${now}`,
+      licencieIds: [row.created_by_licencie_id],
+      title: "Demande de dérogation",
+      body: action === "REQUEST_CHANGE" ? "Ta demande n'est pas possible : un autre créneau est demandé." : action === "COMPLETE" ? "Ta demande de dérogation est traitée." : "Ta demande de dérogation est prise en charge.",
+      path: (slug) => paths.derogation(slug, row.id),
+    });
   }
 
   const fresh = (await loadRequest(ctx.db, ctx.clubId, row.id)) as RequestRow;

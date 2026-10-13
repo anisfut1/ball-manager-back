@@ -3,7 +3,7 @@ import type { ClubRole, ClubStatus } from "../db/types.js";
 import { notFound } from "../api-error.js";
 
 /**
- * Adapté depuis SCSB src/lib/tenancy/club-context.ts : même logique de
+ * Adapté depuis ball-manager-web src/lib/tenancy/club-context.ts : même logique de
  * résolution "quel club, avec quels droits", mais sans couplage Next.js
  * (plus de `notFound()`/`redirect()` — on lève `ApiError`, géré par le
  * middleware d'erreur central). Le `supabase` passé ici doit TOUJOURS être

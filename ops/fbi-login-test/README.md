@@ -49,7 +49,7 @@ chemin de la production. Le script le définit dans la page (no-op).
 
 ```bash
 node -v                      # 20 ou plus ; sinon installeur macOS sur https://nodejs.org
-git clone --depth 1 https://github.com/anisfut1/club-manager-api.git ~/fbi-test
+git clone --depth 1 https://github.com/anisfut1/ball-manager-back.git ~/fbi-test
 cd ~/fbi-test
 npm ci
 npx playwright-core install chromium

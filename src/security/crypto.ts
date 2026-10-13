@@ -2,7 +2,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { getEnv } from "../config/env.js";
 
 /**
- * Copié depuis SCSB src/lib/security/crypto.ts (seul changement : la clé
+ * Copié depuis ball-manager-web src/lib/security/crypto.ts (seul changement : la clé
  * vient de `getEnv()` au lieu du `serverEnv` couplé Next.js — la logique
  * de chiffrement elle-même est inchangée). Voir docs/AUTH.md.
  */

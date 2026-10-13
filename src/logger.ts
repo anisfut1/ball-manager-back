@@ -1,5 +1,5 @@
 /**
- * Logger structuré minimal (voir SCSB src/lib/logger.ts, dont ce module est
+ * Logger structuré minimal (voir ball-manager-web src/lib/logger.ts, dont ce module est
  * la copie directe — pas de dépendance Next.js à retirer ici, c'était déjà
  * un module pur). Sortie JSON sur la console, suffisante pour les logs
  * Vercel. Jamais de mot de passe, cookie, jeton, contenu de document ou nom

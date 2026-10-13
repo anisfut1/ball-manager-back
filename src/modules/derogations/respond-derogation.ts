@@ -34,7 +34,7 @@ async function recordLoginOutcome(supabase: DbClient, clubId: string, success: b
  * `claim_next_fbi_job_for_club`, migration `20260927020000`).
  *
  * Revalide `actionRequired` CÔTÉ SERVEUR (jamais confiance dans le client) :
- * le bouton ne doit exister côté SCSB que quand c'est vrai, mais une requête
+ * le bouton ne doit exister côté ball-manager-web que quand c'est vrai, mais une requête
  * directe à cette route sans repasser par l'UI ne doit jamais pouvoir
  * soumettre une réponse pour une dérogation qui n'attend pas celle du club.
  *

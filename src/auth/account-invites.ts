@@ -1,7 +1,7 @@
 import type { User } from "@supabase/supabase-js";
+import { linkBaseUrl, links } from "../links/links.js";
 import type { DbClient } from "../db/client.js";
 import type { ClubRole } from "../db/types.js";
-import { getEnv } from "../config/env.js";
 import { sendEmail } from "../email/resend.js";
 import { buildAccessGrantedEmail, buildInviteEmail, buildPasswordResetEmail, type ClubBranding } from "../email/account-emails.js";
 import { PLATFORM_NAME } from "../email/layout.js";
@@ -36,10 +36,7 @@ export function rolePhrase(roles: readonly ClubRole[]): string {
 
 /** URL publique du frontend (liens des emails) — `PUBLIC_APP_URL`, sinon la première origine https autorisée. */
 export function appBaseUrl(): string {
-  const env = getEnv();
-  if (env.PUBLIC_APP_URL) return env.PUBLIC_APP_URL.replace(/\/+$/, "");
-  const origins = env.FRONTEND_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean);
-  return origins.find((o) => o.startsWith("https://")) ?? origins[0] ?? "";
+  return linkBaseUrl();
 }
 
 /** Recherche par email sur toutes les pages (listUsers n'en renvoie qu'une par défaut). */
@@ -57,7 +54,7 @@ export async function findUserByEmail(db: DbClient, email: string): Promise<User
 
 function welcomeLink(hashedToken: string, type: string, next: string): string {
   const params = new URLSearchParams({ token_hash: hashedToken, type, next });
-  return `${appBaseUrl()}/bienvenue?${params.toString()}`;
+  return links(appBaseUrl()).accountWelcome(params);
 }
 
 /**
@@ -78,7 +75,7 @@ export async function provisionClubAccount(
   const existing = await findUserByEmail(db, email);
 
   if (existing && existing.last_sign_in_at) {
-    const message = buildAccessGrantedEmail({ club: input.club, roleLabel, link: `${appBaseUrl()}${next}` });
+    const message = buildAccessGrantedEmail({ club: input.club, roleLabel, link: links(appBaseUrl()).absolute(next) });
     return { userId: existing.id, emailKind: "access_granted", sendEmail: async () => void (await sendEmail({ to: email, fromName: PLATFORM_NAME, ...message })) };
   }
 

@@ -50,6 +50,16 @@ jobs:
             -X GET "https://club-manager-api-two.vercel.app/internal/cron/ffbb" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
+      # Notifications push iOS : rattrapage des envois en échec passager
+      # (l'envoi normal est immédiat, au moment de l'action). Sans clé APNs
+      # côté API : répond { "enabled": false } et ne fait rien.
+      - name: Notifications push en attente
+        continue-on-error: true
+        run: |
+          curl --fail --silent --show-error --max-time 60 \
+            -X GET "https://club-manager-api-two.vercel.app/internal/cron/push" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
       # Diagnostic (2026-10-06) : FBI répond-il depuis une autre adresse que
       # Vercel ? Seuls le code HTTP et le temps de réponse sont affichés
       # (journal public : jamais de contenu de page ni d'identifiant).

@@ -20,10 +20,12 @@ app.use(
   "*",
   cors({
     origin: (origin) => {
+      // L'app mobile native (ball-manager-app) n'envoie pas d'en-tête Origin : CORS ne concerne que le web.
       const allowed = getEnv().FRONTEND_ORIGINS.split(",").map((o) => o.trim());
       return origin && allowed.includes(origin) ? origin : "";
     },
-    allowHeaders: ["Content-Type", "Authorization"],
+    // X-Personal-Link-Token : lien personnel hors URL (web, R-014) ; X-BM-As : personne active d'une session d'appareil (app mobile).
+    allowHeaders: ["Content-Type", "Authorization", "X-Personal-Link-Token", "X-BM-As"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   }),
 );

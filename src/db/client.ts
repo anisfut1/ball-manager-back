@@ -13,7 +13,7 @@ export type DbClient = SupabaseClient<Database>;
  * `504 FUNCTION_INVOCATION_TIMEOUT` générique, sans aucune ligne
  * exploitable dans les logs). Ce fetch injecté échoue vite et clairement
  * à la place, avec un message qui remonte jusqu'au client (voir
- * `ApiUnreachableError` côté SCSB, `src/lib/api/errors.ts`).
+ * `ApiUnreachableError` côté ball-manager-web, `src/lib/api/errors.ts`).
  */
 const SUPABASE_FETCH_TIMEOUT_MS = 15_000;
 

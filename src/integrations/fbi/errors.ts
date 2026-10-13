@@ -1,7 +1,7 @@
 /**
  * Erreurs et statuts FBI partagés entre `HttpFbiClient` (./http-client.ts)
  * et `BrowserFbiClient` (./browser-client.ts) — les deux vivent dans ce
- * même backend (contrairement à l'ancien split app/worker de SCSB), donc un
+ * même backend (contrairement à l'ancien split app/worker de ball-manager-web), donc un
  * seul module d'erreurs, plus de duplication nécessaire.
  */
 

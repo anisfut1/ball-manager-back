@@ -56,7 +56,7 @@ n'existe que si elle correspond à un vrai service déjà construit — voir
 ## Frontend API gaps résolus
 
 Cette section documente les 8 écarts identifiés lors de la migration du
-frontend SCSB vers cette API (voir `docs/MIGRATION.md` côté SCSB), et
+frontend ball-manager-web vers cette API (voir `docs/MIGRATION.md` côté ball-manager-web), et
 comment chacun a été comblé. Objectif : **aucun gap connu** restant côté
 frontend après cette phase.
 

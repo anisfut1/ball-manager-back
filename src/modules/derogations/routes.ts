@@ -26,7 +26,7 @@ derogationsRouter.use("*", requireClubMembership);
  * migration 20260925130000) — un simple membre obtiendrait de toute façon
  * une liste vide via `c.get("supabase")` (client scopé utilisateur, jamais
  * la clé service ici), donc autoriser la route à tout membre serait
- * silencieusement trompeur. Cohérent avec /admin/derogations côté SCSB,
+ * silencieusement trompeur. Cohérent avec /admin/derogations côté ball-manager-web,
  * déjà réservée aux club_admin.
  */
 derogationsRouter.get("/", requireClubRole("club_admin"), async (c) => {

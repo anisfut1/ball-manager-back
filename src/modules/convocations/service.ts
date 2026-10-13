@@ -12,6 +12,8 @@ import { formatTeamNameWithGender } from "../../util/team-name.js";
 import { canManageTeam, coachesTeam, type TrainingCtx } from "../trainings/service.js";
 import { audienceFor, renderConvocationMessage, type ConvocationAudience } from "./render.js";
 import { laundryDutiesFor, laundryOf } from "./laundry.js";
+import { notify } from "../push/service.js";
+import { paths } from "../../links/links.js";
 
 /**
  * Vie d'équipe — Lot 2 : disponibilités des matchs et convocations (voir
@@ -284,7 +286,17 @@ export async function openAvailability(ctx: TrainingCtx, matchId: string): Promi
   await ctx.db
     .from("match_availability_requests")
     .upsert({ club_id: ctx.clubId, match_id: match.id, team_id: match.team_id, opened_by_user_id: ctx.actor.userId, opened_by_licencie_id: ctx.actor.licencieId }, { onConflict: "match_id,team_id", ignoreDuplicates: true });
-  return matchTeamLife(ctx, matchId);
+  const result = await matchTeamLife(ctx, matchId);
+  await notify(ctx.db, {
+    clubId: ctx.clubId,
+    kind: "AVAILABILITY_REQUEST",
+    dedupeKey: `availability:${match.id}:${match.team_id}`,
+    licencieIds: result.availability.roster.filter((r) => !r.response).map((r) => r.licencie.id),
+    title: "Disponibilités",
+    body: "Le coach demande tes disponibilités pour un prochain match.",
+    path: (slug) => paths.match(slug, match.id),
+  });
+  return result;
 }
 
 /** Une relance antérieure au dernier envoi ne compte plus (la mise à jour remet tout le monde « en attente »). */
@@ -305,15 +317,27 @@ export async function remindNoResponse(ctx: TrainingCtx, matchId: string): Promi
   if (isMatchClosed(match)) throw conflict("Ce match est passé, annulé ou reporté.", "MATCH_CLOSED");
   const current = await matchTeamLife(ctx, matchId);
   const now = new Date().toISOString();
+  let waiting: string[];
   if (current.convocation?.sent) {
     if (current.convocation.counts.pending === 0) throw conflict("Tous les convoqués ont déjà répondu.", "NOTHING_TO_REMIND");
     await ctx.db.from("match_convocations").update({ reminded_at: now }).eq("club_id", ctx.clubId).eq("id", current.convocation.id);
+    waiting = current.convocation.recipients.filter((r) => r.response === "PENDING").map((r) => r.licencie.id);
   } else if (current.availability.openedAt) {
     if (current.availability.counts.noResponse === 0) throw conflict("Tout le monde a déjà répondu.", "NOTHING_TO_REMIND");
     await ctx.db.from("match_availability_requests").update({ reminded_at: now }).eq("club_id", ctx.clubId).eq("match_id", match.id).eq("team_id", match.team_id);
+    waiting = current.availability.roster.filter((r) => !r.response).map((r) => r.licencie.id);
   } else {
     throw conflict("Aucune demande en cours : demande d'abord les disponibilités.", "NOTHING_TO_REMIND");
   }
+  await notify(ctx.db, {
+    clubId: ctx.clubId,
+    kind: "RESPONSE_REMINDER",
+    dedupeKey: `reminder:${match.id}:${match.team_id}:${now}`,
+    licencieIds: waiting,
+    title: "Réponse attendue",
+    body: "Le coach attend ta réponse pour un prochain match.",
+    path: (slug) => (current.convocation?.sent ? paths.convocation(slug, match.id) : paths.match(slug, match.id)),
+  });
   return matchTeamLife(ctx, matchId);
 }
 
@@ -532,6 +556,20 @@ export async function sendConvocation(ctx: TrainingCtx, matchId: string): Promis
     sent_at: now,
   }));
   if (dispatches.length) await ctx.db.from("match_convocation_dispatches").insert(dispatches);
+
+  // Push : première convocation → tous ; mise à jour → tous si l'heure, le lieu
+  // ou le match ont changé (reconfirmation), sinon seulement les nouveaux convoqués.
+  const added = p.selected.filter((l) => !existing.get(l.id) || existing.get(l.id)!.removed_at).map((l) => l.id);
+  const updated = revision > 1 && essentialsChanged;
+  await notify(ctx.db, {
+    clubId: ctx.clubId,
+    kind: updated ? "CONVOCATION_UPDATED" : "CONVOCATION_NEW",
+    dedupeKey: `convocation:${previous.id}:r${revision}`,
+    licencieIds: updated ? p.selected.map((l) => l.id) : revision === 1 ? p.selected.map((l) => l.id) : added,
+    title: updated ? "Convocation modifiée" : "Nouvelle convocation",
+    body: updated ? "L'heure ou le lieu a changé : confirme à nouveau ta présence." : "Tu es convoqué pour un prochain match. Confirme ta présence.",
+    path: (slug) => paths.convocation(slug, p.match.id),
+  });
   return matchTeamLife(ctx, matchId);
 }
 

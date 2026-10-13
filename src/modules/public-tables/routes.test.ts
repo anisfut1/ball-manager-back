@@ -736,3 +736,44 @@ describe("GET /v1/public/clubs/:clubSlug/table-leaderboard — visible de tous",
     ]);
   });
 });
+
+describe("App iOS : lien personnel et session d'appareil (docs/MOBILE_AUTH.md)", () => {
+  async function appSession(token: string): Promise<string> {
+    const res = await request("/auth/device-sessions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tokens: [token], platform: "ios" }) });
+    expect(res.status).toBe(201);
+    return ((await res.json()) as { sessionSecret: string }).sessionSecret;
+  }
+
+  it("« lien perdu ? » vers la même adresse : l'ancien lien est révoqué, mais l'app reste connectée", async () => {
+    const first = await claim(THOMAS.id, "thomas@example.test");
+    const secret = await appSession(first);
+    state.publicTokens = state.publicTokens.map((t) => ({ ...t, created_at: new Date(Date.now() - 5 * 60_000).toISOString() }));
+
+    expect((await requestLink(THOMAS.id, {})).status).toBe(200);
+    expect((await request(`/me?token=${first}`)).status).toBe(401);
+    expect((await request("/me", { headers: { authorization: `Bearer ${secret}` } })).status).toBe(200);
+  });
+
+  it("AUTH_LINK_CODES=1 : l'email porte un code à usage unique, jamais le jeton permanent", async () => {
+    process.env.AUTH_LINK_CODES = "1";
+    resetEnvCacheForTests();
+    try {
+      state.licencies = state.licencies.map((l) => (l.id === LEA.id ? { ...l, email: "lea@example.test" } : l));
+      expect((await requestLink(LEA.id, {})).status).toBe(200);
+      const text = sentEmails.at(-1)!.text;
+      expect(text).not.toMatch(/[?&]token=/);
+      const code = /\/public\/club-a\/connexion\/code\/([A-Za-z0-9_-]+)/.exec(text)?.[1];
+      expect(code).toBeTruthy();
+      // Le web échange le code (POST) contre le lien personnel de sa session ; une seule fois.
+      const exchange = await request("/auth/token", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, platform: "web" }) });
+      const body = (await exchange.json()) as { tokens: string[]; redirectPath: string };
+      expect(body.redirectPath).toBe("/public/club-a/tables");
+      expect((await request(`/me?token=${body.tokens[0]}`)).status).toBe(200);
+      const again = await request("/auth/token", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, platform: "web" }) });
+      expect(again.status).toBe(400);
+    } finally {
+      delete process.env.AUTH_LINK_CODES;
+      resetEnvCacheForTests();
+    }
+  });
+});

@@ -33,9 +33,20 @@ const envSchema = z.object({
   RESEND_FROM: z.string().min(1).optional(),
   // Adresse de réponse (boîte réellement lue) — un email sans réponse possible est moins bien classé.
   RESEND_REPLY_TO: z.string().email().optional(),
-  // URL publique du frontend SCSB utilisée dans les liens envoyés par email
+  // URL publique du frontend ball-manager-web utilisée dans les liens envoyés par email
   // quand l'origine de la requête n'est pas exploitable (voir public-tables).
   PUBLIC_APP_URL: z.string().url().optional(),
+  // App iOS / sécurité des liens (docs/MOBILE_AUTH.md) : « 1 » = les emails de
+  // lien personnel portent un code de connexion à usage unique (48 h) au lieu
+  // du jeton permanent. Absent = comportement actuel inchangé.
+  AUTH_LINK_CODES: z.enum(["0", "1"]).optional(),
+  // Notifications push iOS (APNs direct, clé .p8 « Apple Push Notifications
+  // service »). Toutes absentes = push désactivé : rien n'est mis en file.
+  APNS_TEAM_ID: z.string().regex(/^[A-Z0-9]{10}$/).optional(),
+  APNS_KEY_ID: z.string().regex(/^[A-Z0-9]{10}$/).optional(),
+  APNS_BUNDLE_ID: z.string().min(1).optional().default("fr.ballmanager.app"),
+  // Contenu PEM de la clé .p8 (les retours à la ligne peuvent être écrits « \n »).
+  APNS_PRIVATE_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

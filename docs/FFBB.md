@@ -41,8 +41,8 @@ mapping/diff/idempotence est testée unitairement
 aucun appel réel contre `api.ffbb.app` n'a pu être fait depuis un
 environnement de développement (réseau `*.ffbb.app` bloqué dans tous les
 environnements où ce code a été écrit et testé, y compris les sandbox
-utilisées pour le déploiement — voir le premier spike côté SCSB,
-`docs/FFBB_ECOSYSTEM_RESEARCH.md`, conservé dans SCSB). Les noms de champs
+utilisées pour le déploiement — voir le premier spike côté ball-manager-web,
+`docs/FFBB_ECOSYSTEM_RESEARCH.md`, conservé dans ball-manager-web). Les noms de champs
 et endpoints sont ceux confirmés par recoupement de bibliothèques clientes
 open source indépendantes dans ce même document, jamais observés en direct.
 
@@ -450,7 +450,7 @@ toutes deux corrigées :
    (jamais un run concurrent légitime), et est requalifiée en "error" avec
    un message explicite. Testé isolément (`sync.test.ts`).
 
-Fix complémentaire côté SCSB : `/admin/sync` appelait
+Fix complémentaire côté ball-manager-web : `/admin/sync` appelait
 `api.matches.list(club.id)` SANS filtre `from`, paginant tout l'historique
 du club à chaque chargement (le même risque de dépassement de délai déjà
 corrigé sur la page Matchs publique) — aligné sur le même filtre

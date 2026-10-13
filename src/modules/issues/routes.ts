@@ -95,7 +95,7 @@ issuesRouter.get("/", async (c) => {
    * 2025, ça doit impacter que les matchs à venir pour ensuite agir
    * dessus") — un import e-Marque en erreur pour un match d'une saison déjà
    * terminée n'est plus actionnable, il ne doit plus polluer cette liste.
-   * Même formule que SCSB (`src/lib/season.ts#currentSeasonStart`, 1er août).
+   * Même formule que ball-manager-web (`src/lib/season.ts#currentSeasonStart`, 1er août).
    */
   const seasonStartIso = currentSeasonStart().toISOString();
 

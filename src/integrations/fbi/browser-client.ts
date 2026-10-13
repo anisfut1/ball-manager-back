@@ -163,7 +163,7 @@ export interface BrowserFbiClientOptions {
    * date etc" (constat club, 2026-09-27) après le quatrième revirement qui
    * avait retiré tout détail par ligne du lot pour éviter le timeout
    * Vercel de 300s. Le détail reste indispensable à l'affichage
-   * (`DerogationsList.tsx` côté SCSB) — mais 80+ nouveaux onglets
+   * (`DerogationsList.tsx` côté ball-manager-web) — mais 80+ nouveaux onglets
    * séquentiels dépassaient largement 300s. Maintenant que
    * `tryMaximizeResultsPageLength` ramène tout sur UNE SEULE page (plus de
    * 5 clics "Suivant" à ~2-6s chacun), le budget restant pour le détail
@@ -2013,7 +2013,7 @@ export class BrowserFbiClient {
    * TOUTES les dérogations du club connecté. UNE SEULE connexion FBI pour
    * tout le club, jamais une boucle de connexions par match (déjà à
    * l'origine d'un blocage anti-bot par le passé pour `discover_emarque`,
-   * voir ProcessFbiJobsButton.tsx côté SCSB).
+   * voir ProcessFbiJobsButton.tsx côté ball-manager-web).
    *
    * **PAS de détail par ligne ici** (motif/dates demandées/réponse
    * adversaire) — quatrième revirement (voir docs/FBI.md, "La vraie
@@ -2031,7 +2031,7 @@ export class BrowserFbiClient {
    *
    * **Le détail redevient nécessaire — cinquième revirement** (voir
    * docs/FBI.md) : "on récupère plus le demandeur le motif, l'heure la
-   * date etc" (constat club, 2026-09-27) — `DerogationsList.tsx` (SCSB)
+   * date etc" (constat club, 2026-09-27) — `DerogationsList.tsx` (ball-manager-web)
    * affiche ces champs pour CHAQUE dérogation, jamais seulement au clic
    * "Vérifier sur FBI" d'un match précis. Les retirer du lot a réglé le
    * timeout mais cassé l'affichage pour toutes les lignes d'un coup — un

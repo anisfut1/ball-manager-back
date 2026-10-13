@@ -2,7 +2,7 @@
 # Installe le worker de test FBI « session persistante » sur le VPS (Debian/Ubuntu).
 # Voir ops/fbi-session-worker/README.md. À lancer en root :
 #
-#   curl -fsSL https://raw.githubusercontent.com/anisfut1/club-manager-api/main/ops/fbi-session-worker/install.sh \
+#   curl -fsSL https://raw.githubusercontent.com/anisfut1/ball-manager-back/main/ops/fbi-session-worker/install.sh \
 #     | sudo bash -s -- <SUPABASE_URL> <SUPABASE_ANON_KEY>
 #
 # - accès DIRECT à FBI : le proxy Squid installé précédemment est arrêté et
@@ -15,7 +15,7 @@ set -euo pipefail
 
 SUPABASE_URL="${1:?usage : install.sh <SUPABASE_URL> <SUPABASE_ANON_KEY>}"
 SUPABASE_ANON_KEY="${2:?usage : install.sh <SUPABASE_URL> <SUPABASE_ANON_KEY>}"
-REPO_URL="https://github.com/anisfut1/club-manager-api.git"
+REPO_URL="https://github.com/anisfut1/ball-manager-back.git"
 APP_DIR=/opt/club-manager-api
 ENV_FILE=/etc/fbi-session-worker.env
 BROWSERS_DIR=/opt/ms-playwright

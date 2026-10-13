@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { DbClient } from "../../db/client.js";
-import { badRequest, conflict, forbidden, notFound, serviceUnavailable, tooManyRequests, unauthorized } from "../../api-error.js";
+import { badRequest, conflict, forbidden, notFound, serviceUnavailable, tooManyRequests } from "../../api-error.js";
 import {
   PublicAssignRoleQueryDtoSchema,
   PublicAssignTableBodyDtoSchema,
@@ -20,6 +20,9 @@ import { PutRefereeStatusDtoSchema } from "../../contracts/tables.js";
 import { generatePublicToken, hashPublicToken } from "./token.js";
 import { encryptPublicToken } from "./personal-link.js";
 import { resolvePublicClub, type PublicClub } from "../public/club-resolver.js";
+import { licencieFromRequest, type RequestLike } from "../public/credential.js";
+import { appLinks, linkBaseUrl, links, paths } from "../../links/links.js";
+import { createAuthCode, LOGIN_LINK_CODE_TTL_MS, moveGrantsToToken } from "../device-auth/service.js";
 import { getEnv } from "../../config/env.js";
 import { isEmailConfigured, sendEmail } from "../../email/resend.js";
 import { buildPersonalLinkEmail, maskEmail } from "../../email/personal-link-email.js";
@@ -70,28 +73,15 @@ export const publicTablesRouter = new Hono<PublicEnv>();
 /** Toute route de ce routeur commence par résoudre le club via son slug — jamais son UUID (le slug seul est distribué dans le lien, §"un seul lien envoyé à tout le monde"). Voir `../public/club-resolver.ts`, partagé avec les autres modules publics. */
 publicTablesRouter.use("*", resolvePublicClub<PublicEnv>());
 
-/**
- * Résout l'identité depuis `?token=` — la SEULE preuve d'identité de ce
- * flux (retour du club : "si le token est tjr actif"). 401 si absent,
- * inconnu, ou révoqué par un admin — jamais une distinction plus fine
- * (§"sinon faut faire une demande admin", jamais un message qui aiderait à
- * deviner un jeton valide).
- */
-export async function licencieFromToken(supabase: DbClient, clubId: string, token: string): Promise<{ id: string; first_name: string; last_name: string; team_id: string | null }> {
-  const tokenHash = hashPublicToken(token);
-  const { data: claim } = await supabase.from("licencie_public_tokens").select("licencie_id").eq("club_id", clubId).eq("token_hash", tokenHash).is("revoked_at", null).maybeSingle();
-  if (!claim) throw unauthorized("Lien personnel invalide ou révoqué — demande à un·e responsable du club de réinitialiser ton profil.");
+// Résolution du jeton : module partagé (voir ../public/personal-token.ts) ; ré-exportée pour les imports existants.
+export { licencieFromToken } from "../public/personal-token.js";
 
-  const { data: licencie } = await supabase.from("licencies").select("id, first_name, last_name, team_id").eq("id", claim.licencie_id).eq("club_id", clubId).maybeSingle();
-  if (!licencie) throw unauthorized("Lien personnel invalide.");
-  return licencie;
-}
-
-async function resolvePublicLicencie(c: { get: (k: "supabase" | "publicClub") => DbClient | PublicClub; set: (k: "publicLicencie", v: PublicLicencie) => void }, token: string): Promise<void> {
+/** Personne de la requête : lien personnel (web) ou session d'appareil (app) — voir ../public/credential.ts. */
+async function resolvePublicLicencie(c: { req: RequestLike; get: (k: "supabase" | "publicClub") => DbClient | PublicClub; set: (k: "publicLicencie", v: PublicLicencie) => void }): Promise<void> {
   const supabase = c.get("supabase") as DbClient;
   const club = c.get("publicClub") as PublicClub;
 
-  const licencie = await licencieFromToken(supabase, club.id, token);
+  const licencie = await licencieFromRequest(c.req, supabase, club.id);
 
   c.set("publicLicencie", { id: licencie.id, firstName: licencie.first_name, lastName: licencie.last_name, teamId: licencie.team_id });
 }
@@ -163,7 +153,7 @@ publicTablesRouter.post("/access-requests", async (c) => {
       fullName: parsed.data.fullName.replace(/\s+/g, " "),
       email: parsed.data.email,
       message: parsed.data.message?.trim() || null,
-      link: `${resolvePublicAppBaseUrl(c.req.header("origin"))}/c/${encodeURIComponent(club.slug)}/joueurs`,
+      link: appLinks(c.req.header("origin")).clubAdminPlayers(club.slug),
     });
     await Promise.all(emails.map((to) => sendEmail({ to, fromName: PLATFORM_NAME, replyTo: parsed.data.email, ...message }).catch((error) => logError("Envoi de la demande d'accès échoué", error, { clubId: club.id }))));
   }
@@ -178,15 +168,7 @@ publicTablesRouter.post("/access-requests", async (c) => {
  * tiers — sinon un attaquant pourrait faire envoyer un lien piégé.
  */
 export function resolvePublicAppBaseUrl(requestOrigin: string | undefined): string {
-  const env = getEnv();
-  const allowed = env.FRONTEND_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean);
-  // PUBLIC_APP_URL d'abord : les liens envoyés par email pointent toujours vers
-  // le domaine officiel (idéalement le même que l'expéditeur), jamais vers une
-  // URL *.vercel.app d'où la demande serait partie — un lien vers un domaine
-  // différent de l'expéditeur fait classer l'email en indésirable.
-  if (env.PUBLIC_APP_URL) return env.PUBLIC_APP_URL.replace(/\/+$/, "");
-  if (requestOrigin && allowed.includes(requestOrigin)) return requestOrigin;
-  return allowed.find((o) => o.startsWith("https://")) ?? allowed[0] ?? "";
+  return linkBaseUrl(requestOrigin);
 }
 
 /** Adresses des administrateurs actifs (`club_admin`) d'un club — destinataires des demandes publiques. */
@@ -225,6 +207,12 @@ export async function issuePersonalLink(
     targetEmail: string;
     returnTo: string;
     baseUrl: string;
+    /**
+     * Même propriétaire (adresse déjà connue) : les sessions de l'app iOS
+     * passent sur le nouveau lien au lieu d'être déconnectées. Jamais pour
+     * une adresse différente (demande approuvée par un admin).
+     */
+    keepAppSessions?: boolean;
   },
 ): Promise<void> {
   const { club, licencie, targetEmail } = input;
@@ -244,7 +232,16 @@ export async function issuePersonalLink(
     throw new Error(`Création du lien personnel échouée : ${error.message}`);
   }
 
-  const link = `${input.baseUrl}/public/${encodeURIComponent(club.slug)}/${input.returnTo}?token=${encodeURIComponent(token)}`;
+  const { data: created } = await supabase.from("licencie_public_tokens").select("id").eq("token_hash", tokenHash).maybeSingle();
+  if (created && activeToken && input.keepAppSessions) await moveGrantsToToken(supabase, activeToken.id, created.id);
+
+  const urls = links(input.baseUrl);
+  // AUTH_LINK_CODES=1 : code à usage unique (48 h) au lieu du jeton permanent ; l'ancien format reste valable partout.
+  let link = urls.personalLink(club.slug, input.returnTo, token);
+  if (getEnv().AUTH_LINK_CODES === "1" && created) {
+    const { code } = await createAuthCode(supabase, club.id, { purpose: "login_link", tokenIds: [created.id], redirectPath: paths.clubPage(club.slug, input.returnTo), ttlMs: LOGIN_LINK_CODE_TTL_MS });
+    link = urls.loginCode(club.slug, code);
+  }
   const message = buildPersonalLinkEmail({ clubName: club.name, clubLogoUrl: club.logoUrl, accentColor: club.accentColor, firstName: licencie.first_name, link });
 
   try {
@@ -330,7 +327,7 @@ publicTablesRouter.post("/licencies/:licencieId/request-link", async (c) => {
   if (!isEmailConfigured()) throw serviceUnavailable("L'envoi d'email n'est pas encore configuré pour ce club. Contacte un·e responsable.", "EMAIL_NOT_CONFIGURED");
 
   // Adresse connue (rien saisi, ou la même) : le lien part là.
-  await issuePersonalLink(supabase, { club, licencie, targetEmail: knownEmail, returnTo, baseUrl: resolvePublicAppBaseUrl(c.req.header("origin")) });
+  await issuePersonalLink(supabase, { club, licencie, targetEmail: knownEmail, returnTo, baseUrl: resolvePublicAppBaseUrl(c.req.header("origin")), keepAppSessions: true });
   return c.json({ sent: true as const, maskedEmail: maskEmail(knownEmail), pendingApproval: false as const });
 });
 
@@ -374,7 +371,7 @@ async function createClaimRequest(
     licencieName: `${input.licencie.first_name} ${input.licencie.last_name}`,
     email: input.email,
     knownEmail: maskEmail(input.knownEmail),
-    link: `${resolvePublicAppBaseUrl(c.req.header("origin"))}/c/${encodeURIComponent(club.slug)}/joueurs`,
+    link: appLinks(c.req.header("origin")).clubAdminPlayers(club.slug),
   });
   await Promise.all(emails.map((to) => sendEmail({ to, fromName: PLATFORM_NAME, ...message }).catch((error) => logError("Envoi de la demande de lien échoué", error, { clubId: club.id }))));
 }
@@ -442,7 +439,7 @@ publicTablesRouter.get("/me", async (c) => {
   const query = PublicTokenQueryDtoSchema.safeParse(c.req.query());
   if (!query.success) throw badRequest(query.error.issues.map((i) => i.message).join(" "));
 
-  await resolvePublicLicencie(c, query.data.token);
+  await resolvePublicLicencie(c);
   const licencie = c.get("publicLicencie");
   const supabase = c.get("supabase");
   const clubId = c.get("publicClub").id;
@@ -466,7 +463,7 @@ publicTablesRouter.get("/derogations", async (c) => {
   const query = PublicTokenQueryDtoSchema.safeParse(c.req.query());
   if (!query.success) throw badRequest(query.error.issues.map((i) => i.message).join(" "));
 
-  await resolvePublicLicencie(c, query.data.token);
+  await resolvePublicLicencie(c);
   const supabase = c.get("supabase");
   const club = c.get("publicClub");
   const me = c.get("publicLicencie");
@@ -490,7 +487,7 @@ publicTablesRouter.post("/derogations/:derogationId/respond", async (c) => {
   const body = RespondToDerogationDtoSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!body.success) throw badRequest(body.error.issues[0]?.message ?? "Corps de requête invalide.");
 
-  await resolvePublicLicencie(c, query.data.token);
+  await resolvePublicLicencie(c);
   const supabase = c.get("supabase");
   const club = c.get("publicClub");
   await requireDerogationsManager(supabase, club.id, c.get("publicLicencie").id);
@@ -518,7 +515,7 @@ publicTablesRouter.post("/matches/:matchId/derogation/create", async (c) => {
   const body = CreateDerogationDtoSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!body.success) throw badRequest(body.error.issues[0]?.message ?? "Corps de requête invalide.");
 
-  await resolvePublicLicencie(c, query.data.token);
+  await resolvePublicLicencie(c);
   const supabase = c.get("supabase");
   const club = c.get("publicClub");
   await requireDerogationsManager(supabase, club.id, c.get("publicLicencie").id);
@@ -548,7 +545,7 @@ publicTablesRouter.get("/table-assignments", async (c) => {
   const query = PublicTableAssignmentsQueryDtoSchema.safeParse(c.req.query());
   if (!query.success) throw badRequest(query.error.issues.map((i) => i.message).join(" "));
 
-  await resolvePublicLicencie(c, query.data.token);
+  await resolvePublicLicencie(c);
   const supabase = c.get("supabase");
   const club = c.get("publicClub");
   const me = c.get("publicLicencie");
@@ -576,7 +573,7 @@ publicTablesRouter.put("/matches/:matchId/table-assignments/:role", async (c) =>
   const body = PublicAssignTableBodyDtoSchema.safeParse((await c.req.json().catch(() => null)) ?? {});
   if (!body.success) throw badRequest(body.error.issues.map((i) => i.message).join(" "));
 
-  await resolvePublicLicencie(c, query.data.token);
+  await resolvePublicLicencie(c);
   const supabase = c.get("supabase");
   const club = c.get("publicClub");
   const me = c.get("publicLicencie");
@@ -625,7 +622,7 @@ publicTablesRouter.delete("/matches/:matchId/table-assignments/:role", async (c)
   const query = PublicTokenQueryDtoSchema.safeParse(c.req.query());
   if (!query.success) throw badRequest(query.error.issues.map((i) => i.message).join(" "));
 
-  await resolvePublicLicencie(c, query.data.token);
+  await resolvePublicLicencie(c);
   const supabase = c.get("supabase");
   const club = c.get("publicClub");
   const me = c.get("publicLicencie");
@@ -651,7 +648,7 @@ publicTablesRouter.get("/matches/:matchId/table-suggestions", async (c) => {
   const query = PublicAssignRoleQueryDtoSchema.safeParse(c.req.query());
   if (!query.success) throw badRequest(query.error.issues.map((i) => i.message).join(" "));
 
-  await resolvePublicLicencie(c, query.data.token);
+  await resolvePublicLicencie(c);
   const supabase = c.get("supabase");
   const club = c.get("publicClub");
   await requireTablesManager(supabase, club.id, c.get("publicLicencie").id);
@@ -668,7 +665,7 @@ publicTablesRouter.put("/matches/:matchId/referee-status", async (c) => {
   const body = PutRefereeStatusDtoSchema.safeParse(await c.req.json().catch(() => null));
   if (!body.success) throw badRequest(body.error.issues.map((i) => i.message).join(" "));
 
-  await resolvePublicLicencie(c, query.data.token);
+  await resolvePublicLicencie(c);
   const supabase = c.get("supabase");
   const club = c.get("publicClub");
   await requireTablesManager(supabase, club.id, c.get("publicLicencie").id);

@@ -1,18 +1,18 @@
-# Architecture — club-manager-api
+# Architecture — ball-manager-back
 
 ## 1. Vue d'ensemble
 
 ```
-FRONTEND (SCSB, Next.js, Vercel)
+FRONTEND (ball-manager-web, Next.js, Vercel)
    │ HTTPS + Authorization: Bearer <JWT Supabase Auth>
    ▼
-club-manager-api (Hono, Vercel Functions)
+ball-manager-back (Hono, Vercel Functions)
    │
    ├── /v1/*        — API façade métier (JWT requis, RLS appliquée)
    └── /internal/*  — cron/jobs (CRON_SECRET requis, jamais côté frontend)
    │
    ▼
-Supabase (PostgreSQL + Auth + Storage) — MÊME instance que SCSB
+Supabase (PostgreSQL + Auth + Storage) — MÊME instance que ball-manager-web
    │
    ▼
 Services externes : FFBB (api.ffbb.app), FBI (extranet.ffbb.com)
@@ -62,7 +62,7 @@ src/
   integrations/
     ffbb/                — client Directus public FFBB, mapping, sync, scheduler
     fbi/                 — HttpFbiClient (principal), BrowserFbiClient (secours), classification lecture/écriture
-    emarque/              — parser OCR/PDF (inchangé depuis SCSB), schémas, persistance
+    emarque/              — parser OCR/PDF (inchangé depuis ball-manager-web), schémas, persistance
 
   storage/emarque-storage.ts — chemins Storage, upload/download/URL signée
 

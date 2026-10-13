@@ -716,6 +716,132 @@ export interface Database {
         }
       >;
 
+      // App iOS : sessions d'appareil dérivées du lien personnel (voir docs/MOBILE_AUTH.md).
+      device_sessions: Table<
+        {
+          id: string;
+          club_id: string;
+          secret_hash: string;
+          platform: "ios" | "web";
+          app_version: string | null;
+          device_label: string | null;
+          created_at: string;
+          last_used_at: string;
+          expires_at: string;
+          revoked_at: string | null;
+        },
+        {
+          id?: string;
+          club_id: string;
+          secret_hash: string;
+          platform: "ios" | "web";
+          app_version?: string | null;
+          device_label?: string | null;
+          created_at?: string;
+          last_used_at?: string;
+          expires_at: string;
+          revoked_at?: string | null;
+        }
+      >;
+
+      device_push_tokens: Table<
+        {
+          id: string;
+          session_id: string;
+          club_id: string;
+          token: string;
+          platform: "ios";
+          environment: "development" | "production";
+          app_version: string | null;
+          created_at: string;
+          last_seen_at: string;
+          revoked_at: string | null;
+          revoked_reason: string | null;
+        },
+        {
+          id?: string;
+          session_id: string;
+          club_id: string;
+          token: string;
+          platform?: "ios";
+          environment: "development" | "production";
+          app_version?: string | null;
+          created_at?: string;
+          last_seen_at?: string;
+          revoked_at?: string | null;
+          revoked_reason?: string | null;
+        }
+      >;
+
+      notification_outbox: Table<
+        {
+          id: string;
+          club_id: string;
+          kind: string;
+          dedupe_key: string;
+          licencie_ids: string[];
+          title: string;
+          body: string;
+          path: string;
+          status: "pending" | "sending" | "sent" | "failed" | "expired";
+          attempts: number;
+          last_error: string | null;
+          devices_sent: number;
+          created_at: string;
+          next_attempt_at: string;
+          sent_at: string | null;
+        },
+        {
+          id?: string;
+          club_id: string;
+          kind: string;
+          dedupe_key: string;
+          licencie_ids: string[];
+          title: string;
+          body: string;
+          path: string;
+          status?: "pending" | "sending" | "sent" | "failed" | "expired";
+          attempts?: number;
+          last_error?: string | null;
+          devices_sent?: number;
+          created_at?: string;
+          next_attempt_at?: string;
+          sent_at?: string | null;
+        }
+      >;
+
+      device_session_grants: Table<
+        { session_id: string; club_id: string; licencie_id: string; token_id: string; created_at: string },
+        { session_id: string; club_id: string; licencie_id: string; token_id: string; created_at?: string }
+      >;
+
+      auth_codes: Table<
+        {
+          id: string;
+          club_id: string;
+          code_hash: string;
+          purpose: "app_sso" | "login_link";
+          token_ids: string[];
+          code_challenge: string | null;
+          redirect_path: string | null;
+          created_at: string;
+          expires_at: string;
+          used_at: string | null;
+        },
+        {
+          id?: string;
+          club_id: string;
+          code_hash: string;
+          purpose: "app_sso" | "login_link";
+          token_ids: string[];
+          code_challenge?: string | null;
+          redirect_path?: string | null;
+          created_at?: string;
+          expires_at: string;
+          used_at?: string | null;
+        }
+      >;
+
       match_laundry_assignments: Table<
         {
           id: string;

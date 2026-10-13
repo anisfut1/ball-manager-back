@@ -176,3 +176,20 @@ internalRouter.get("/cron/emarque-parse", async (c) => {
     return c.json({ error: "emarque_parse_failed" }, 500);
   }
 });
+
+/**
+ * GET /internal/cron/push — notifications push en attente (échecs passagers à
+ * réessayer, réservations abandonnées). L'envoi normal est immédiat, au
+ * moment de l'action ; ce passage ne fait que rattraper. Sans clé APNs :
+ * `{ enabled: false }`, rien n'est fait.
+ */
+internalRouter.get("/cron/push", async (c) => {
+  const supabase = createServiceSupabaseClient();
+  try {
+    const { processOutbox } = await import("../../modules/push/service.js");
+    return c.json(await processOutbox(supabase));
+  } catch (error) {
+    logError("Cron push en erreur", error);
+    return c.json({ error: "push_failed" }, 500);
+  }
+});

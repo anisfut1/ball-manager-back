@@ -2,7 +2,7 @@
 
 Aucune infrastructure au-delà de Vercel + Supabase (§ contrainte
 fondamentale de cette migration). La file d'attente est une table
-PostgreSQL, `fbi_jobs`, conservée telle quelle depuis SCSB — jamais
+PostgreSQL, `fbi_jobs`, conservée telle quelle depuis ball-manager-web — jamais
 réécrite ni généralisée sans raison (§ "ne réécris pas inutilement ce qui
 fonctionne").
 
@@ -28,7 +28,7 @@ autres (`SKIP LOCKED` passe au suivant plutôt que d'attendre un verrou).
 **Historique de sécurité conservé** — `claim_next_fbi_job` a été
 verrouillée à `service_role` uniquement par
 `supabase/migrations/20260921110040_fbi_jobs_execute_lockdown.sql`, suite
-à une faille réelle détectée pendant le développement initial (SCSB) :
+à une faille réelle détectée pendant le développement initial (ball-manager-web) :
 avant cette migration, n'importe quel utilisateur `authenticated` pouvait
 appeler la fonction directement et réclamer/lire le job d'un **autre**
 club, contournant totalement la RLS de `fbi_jobs`. Le test de régression
@@ -40,7 +40,7 @@ mélanger les clubs.
 
 ## Backoff — deux échelles distinctes
 
-`src/jobs/backoff.ts`, reprises sans changement de SCSB :
+`src/jobs/backoff.ts`, reprises sans changement de ball-manager-web :
 
 - **`nextWaitingBackoffSeconds`** (document pas encore disponible côté
   FBI/e-Marque — ce n'est pas une erreur, juste "pas encore prêt") :
@@ -65,7 +65,7 @@ les autres clubs de traitement.
 
 ## Les trois phases, trois routes cron indépendantes
 
-Reprend la séparation des responsabilités de l'ancien `worker/` SCSB,
+Reprend la séparation des responsabilités de l'ancien `worker/` ball-manager-web,
 mais comme trois Vercel Functions déclenchées par cron plutôt qu'un
 process long-running séparé (§ "Railway/Render/Fly.io doit disparaître de
 l'architecture cible") :

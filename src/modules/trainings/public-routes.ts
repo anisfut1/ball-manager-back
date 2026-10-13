@@ -15,6 +15,8 @@ import { formatTeamNameWithGender } from "../../util/team-name.js";
 import { resolvePublicClub, type PublicClub } from "../public/club-resolver.js";
 import { words } from "../public-tables/name-search.js";
 import { licencieFromToken } from "../public-tables/routes.js";
+import { deviceSessionFromRequest, licencieFromRequest } from "../public/credential.js";
+import type { ResolvedDeviceSession } from "../device-auth/service.js";
 import { actorFromLicencie } from "./actor.js";
 import { teamOverview } from "./team-overview.js";
 import { assignLaundry, laundrySuggestions, markLaundrySeen, removeLaundry } from "../convocations/laundry.js";
@@ -58,11 +60,9 @@ const HOME_DAYS = 14;
 const MAX_TRAININGS_PER_PERSON = 3;
 
 async function tokenCtx(c: Context<PublicEnv>): Promise<TrainingCtx & { licencie: { id: string; first_name: string } }> {
-  const token = c.req.query("token");
-  if (!token) throw badRequest("Lien personnel manquant.", "TOKEN_REQUIRED");
   const db = c.get("supabase");
   const club = c.get("publicClub");
-  const licencie = await licencieFromToken(db, club.id, token);
+  const licencie = await licencieFromRequest(c.req, db, club.id);
   const actor = await actorFromLicencie(db, club.id, licencie.id);
   return { db, clubId: club.id, timezone: club.timezone, actor, licencie };
 }
@@ -155,13 +155,32 @@ interface Person {
 }
 
 /** Liens valides de l'appareil → personnes (un lien invalide est signalé, jamais bloquant). */
-async function peopleOf(db: DbClient, club: PublicClub, tokens: string[]): Promise<{ people: Person[]; invalid: number[] }> {
+/** Entrée de `tokens` désignant une personne de la session d'appareil (app iOS) : `as:<licencieId>`. */
+const ACT_AS_PREFIX = "as:";
+
+/**
+ * Personnes de l'appareil, dans l'ordre de `tokens` (le front répond avec
+ * `tokens[tokenIndex]`). Web : liens personnels. App : session d'appareil
+ * (`Authorization: Bearer bmd_…`) et entrées `as:<licencieId>`, chacune
+ * vérifiée dans les droits de la session — jamais une personne hors session.
+ */
+async function peopleOf(db: DbClient, club: PublicClub, tokens: string[], session: ResolvedDeviceSession | null): Promise<{ people: Person[]; invalid: number[] }> {
   const people: Person[] = [];
   const invalid: number[] = [];
+  const granted = new Set(session?.grants.map((g) => g.licencieId) ?? []);
   await Promise.all(
     tokens.map(async (token, index) => {
       try {
-        const l = await licencieFromToken(db, club.id, token);
+        let l: { id: string; first_name: string; last_name: string };
+        if (session) {
+          const id = token.startsWith(ACT_AS_PREFIX) ? token.slice(ACT_AS_PREFIX.length) : "";
+          if (!granted.has(id)) throw new Error("hors session");
+          const { data } = await db.from("licencies").select("id, first_name, last_name").eq("id", id).eq("club_id", club.id).maybeSingle();
+          if (!data) throw new Error("introuvable");
+          l = data;
+        } else {
+          l = await licencieFromToken(db, club.id, token);
+        }
         const actor = await actorFromLicencie(db, club.id, l.id);
         people.push({ index, licencieId: l.id, firstName: l.first_name, lastName: l.last_name, teamId: actor.teamId, actor });
       } catch {
@@ -203,7 +222,7 @@ publicTrainingsRouter.post("/action-center", async (c) => {
   const body = await parse(ActionCenterRequestDtoSchema, c);
   const db = c.get("supabase");
   const club = c.get("publicClub");
-  const { people, invalid } = await peopleOf(db, club, body.tokens);
+  const { people, invalid } = await peopleOf(db, club, body.tokens, await deviceSessionFromRequest(c.req, db, club.id));
   const ctx: TrainingCtx = { db, clubId: club.id, timezone: club.timezone, actor: mergedActor(people) };
 
   const from = new Date().toISOString();
@@ -287,7 +306,7 @@ publicTrainingsRouter.post("/planning", async (c) => {
   const body = await parse(ActionCenterRequestDtoSchema, c);
   const db = c.get("supabase");
   const club = c.get("publicClub");
-  const { people } = await peopleOf(db, club, body.tokens);
+  const { people } = await peopleOf(db, club, body.tokens, await deviceSessionFromRequest(c.req, db, club.id));
   const ctx: TrainingCtx = { db, clubId: club.id, timezone: club.timezone, actor: mergedActor(people) };
   const deviceTeams = [...new Set(people.flatMap((p) => [p.teamId, ...p.actor.coachTeamList]).filter((id): id is string => Boolean(id)))];
   // `teamId` (page Équipe) : seulement une équipe de l'appareil, jamais une autre.

@@ -1,6 +1,6 @@
 # Multi-tenancy
 
-Modèle repris intact de SCSB (`docs/MULTI_TENANCY.md` original, migration
+Modèle repris intact de ball-manager-web (`docs/MULTI_TENANCY.md` original, migration
 détaillée dans `docs/MIGRATION.md`) — ce document résume ce qui concerne
 directement ce backend.
 

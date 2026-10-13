@@ -161,7 +161,7 @@ export interface FbiAutomationClient<TSession> {
    * seule connexion FBI pour tout le club, comme `fetchScheduleRows` —
    * jamais une boucle de connexions par match (déjà à l'origine d'un
    * blocage anti-bot par le passé, voir ProcessFbiJobsButton.tsx côté
-   * SCSB). Gère elle-même la pagination.
+   * ball-manager-web). Gère elle-même la pagination.
    */
   fetchAllDerogations(session: TSession): Promise<FbiDerogationRow[]>;
   /**

@@ -12,7 +12,7 @@ cd ~/fbi-test && git pull && npm ci
 ```
 
 Créer `~/fbi-test/.env.fbi-local` (jamais commité) avec les 4 valeurs copiées
-depuis Vercel → projet `club-manager-api` → Settings → Environment Variables :
+depuis Vercel → projet Vercel `club-manager-api` → Settings → Environment Variables :
 
 ```
 SUPABASE_URL=...

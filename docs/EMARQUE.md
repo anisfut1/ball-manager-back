@@ -124,7 +124,7 @@ persistance (`persist/`) :
   par joueur) est signalé, jamais silencieusement ignoré ni bloquant pour
   le reste de l'import.
 
-Ce module est un report quasi verbatim de `src/server/emarque/**` de SCSB
+Ce module est un report quasi verbatim de `src/server/emarque/**` de ball-manager-web
 (voir `docs/MIGRATION.md`) — la logique d'extraction ne dépend d'aucune
 API Next.js, seul l'import `@/types/database` → `@/db/types` a changé.
 
@@ -152,7 +152,7 @@ n'a alors jamais lieu.
 `require()` dynamique basé sur une détection runtime du support SIMD —
 jamais tracé statiquement non plus, et sans point d'extension équivalent
 à `globalThis.pdfjsWorker` pour le contourner ; et le modèle de langue OCR
-(`fra.traineddata`) n'avait en réalité **jamais été porté** depuis SCSB
+(`fra.traineddata`) n'avait en réalité **jamais été porté** depuis ball-manager-web
 lors de la migration (`OCR_LANG_PATH` pointait vers un chemin Next.js de
 l'ancien monolithe qui n'a jamais existé dans ce repo). Corrigé : le
 fichier est maintenant vendorisé sous

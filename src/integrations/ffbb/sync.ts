@@ -4,6 +4,7 @@ import type { FfbbPublicProvider } from "./public-provider.js";
 import type { NormalizedCompetition, NormalizedPool, NormalizedTeamEngagement } from "./types.js";
 import { diffTrackedFields, mapNormalizedMatchToRow, shouldRequestEmarque } from "./mapping.js";
 import { logError, logInfo } from "../../logger.js";
+import { notifyMatchChange } from "../../modules/push/hooks.js";
 
 type Client = SupabaseClient<Database>;
 
@@ -430,6 +431,16 @@ export async function syncFfbb(supabase: Client, provider: FfbbPublicProvider, c
           if (historyError) {
             logError("Écriture de l'historique de changement échouée", historyError, { clubId: club.id, matchId: upserted.id });
           }
+
+          await notifyMatchChange(supabase, {
+            clubId: club.id,
+            matchId: upserted.id,
+            teamId: row.team_id ?? null,
+            matchDatetime: row.match_datetime ?? null,
+            status: row.status ?? "scheduled",
+            diffs,
+            syncRunId: syncRun.id,
+          });
         } else {
           stats.matchesUnchanged += 1;
         }

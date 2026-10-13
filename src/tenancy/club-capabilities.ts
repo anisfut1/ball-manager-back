@@ -1,7 +1,7 @@
 import type { DbClient } from "../db/client.js";
 
 /**
- * Copié depuis SCSB src/lib/tenancy/club-capabilities.ts. Modèle central du
+ * Copié depuis ball-manager-web src/lib/tenancy/club-capabilities.ts. Modèle central du
  * caractère FACULTATIF de FBI (§15/§17 de la demande) : le frontend
  * n'implémente JAMAIS `if (fbiCredentials) ...` lui-même, il lit cette
  * réponse via `GET /v1/clubs/:clubId/capabilities`.

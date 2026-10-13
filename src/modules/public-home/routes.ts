@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import type { DbClient } from "../../db/client.js";
-import { badRequest } from "../../api-error.js";
+
 import type { PublicHomeDto } from "../../contracts/public-home.js";
 import { formatTeamNameWithGender } from "../../util/team-name.js";
 import { listMatchesForClub } from "../matches/shared.js";
 import { resolvePublicClub, type PublicClub } from "../public/club-resolver.js";
-import { licencieFromToken } from "../public-tables/routes.js";
+import { licencieFromRequest } from "../public/credential.js";
 
 /**
  * GET /v1/public/clubs/:clubSlug/home?token= — accueil PERSONNEL de l'espace
@@ -24,11 +24,9 @@ export const publicHomeRouter = new Hono<PublicEnv>();
 publicHomeRouter.use("*", resolvePublicClub<PublicEnv>());
 
 publicHomeRouter.get("/", async (c) => {
-  const token = c.req.query("token");
-  if (!token) throw badRequest("Lien personnel manquant.", "TOKEN_REQUIRED");
   const db = c.get("supabase");
   const club = c.get("publicClub");
-  const me = await licencieFromToken(db, club.id, token);
+  const me = await licencieFromRequest(c.req, db, club.id);
 
   const { data: row } = await db.from("licencies").select("team_id, public_admin, public_coach, public_coordinator, coached_team_ids").eq("id", me.id).eq("club_id", club.id).maybeSingle();
   const relations = new Map<string, Set<Relation>>();

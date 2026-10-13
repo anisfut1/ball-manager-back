@@ -15,11 +15,11 @@ raisons :
    déclaré dans `vercel.json` (`functions."api/index.ts".includeFiles`)
    pour finir dans le déploiement de la Function serverless qui en a
    besoin. Constaté en production le 2026-09-24 : ce fichier n'avait
-   jamais été porté depuis SCSB lors de la migration vers ce repo (§
+   jamais été porté depuis ball-manager-web lors de la migration vers ce repo (§
    "Trentième déclenchement", docs/FBI.md) — `OCR_LANG_PATH` pointait vers
    un chemin `src/server/emarque/ocr-data` qui n'existe pas dans ce repo
    (convention Next.js de l'ancien monolithe, jamais celle de
-   `club-manager-api`).
+   `ball-manager-back`).
 
 Ce n'est pas une donnée du club ni un secret : c'est un modèle de langue
 générique et public, comme une police de caractères.

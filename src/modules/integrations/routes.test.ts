@@ -441,7 +441,7 @@ describe("POST /integrations/fbi/process-jobs (§9 : traiter les jobs FBI en att
      * un job discover_emarque réel contre le vrai FBI peut prendre ~3min30,
      * un lot de plusieurs risquait de dépasser maxDuration: 300). Deux
      * requêtes successives (le bouton "Traiter les jobs FBI en attente"
-     * boucle déjà côté SCSB) couvrent toujours le dispatch par type.
+     * boucle déjà côté ball-manager-web) couvrent toujours le dispatch par type.
      */
     const jobs = [makeJob({ id: "job-1", type: "discover_emarque" }), makeJob({ id: "job-2", type: "test_connection" })];
     mockClaimNextJobForClub.mockImplementation(() => Promise.resolve(jobs.shift() ?? null));

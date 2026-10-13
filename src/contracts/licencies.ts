@@ -147,7 +147,7 @@ export type UpdateLicencieProfileDto = z.infer<typeof UpdateLicencieProfileDtoSc
  * stp, a lavenir yen aura dautres, faudra ignorer les doublons dans les
  * exports". Une ligne = une personne physique de l'export — jamais
  * transformée ici (le parsing du fichier XLSX/CSV réel se fait côté
- * SCSB, ce backend ne reçoit que du JSON déjà normalisé).
+ * ball-manager-web, ce backend ne reçoit que du JSON déjà normalisé).
  *
  * `ffbbLicenceId` ("N° national") obligatoire : LA clé de dédoublonnage
  * (voir migration `20260928020000_licencies_ffbb_import.sql`) — sans elle,

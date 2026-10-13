@@ -90,7 +90,7 @@ export async function processJobBatch(
       // TOUJOURS un job comme réussi, y compris un job simplement
       // replanifié (page introuvable, rien à télécharger pour l'instant),
       // constaté en production le 2026-09-24 : "3 réussis" affiché côté
-      // SCSB alors qu'un seul job avait réellement abouti. `catch`
+      // ball-manager-web alors qu'un seul job avait réellement abouti. `catch`
       // ci-dessous ne couvre donc que le cas vraiment inattendu (crash
       // avant que la fonction gère elle-même son erreur).
       if (jobSucceeded) succeeded += 1;

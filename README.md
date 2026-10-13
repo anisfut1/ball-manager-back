@@ -1,11 +1,11 @@
-# club-manager-api
+# ball-manager-back
 
 Backend REST du SaaS multi-clubs (FFBB / FBI / e-Marque). TypeScript, [Hono](https://hono.dev/), déployé comme fonctions Vercel. Aucune infrastructure autre que **Vercel** et **Supabase** (PostgreSQL, Auth, Storage) — voir `docs/DEPLOYMENT.md`.
 
 Ce dépôt est le résultat d'une migration depuis le dépôt frontend historique
-[SCSB](https://github.com/anisfut1/scsb) (commit `5deeaa4`) : voir
+[ball-manager-web](https://github.com/anisfut1/scsb) (commit `5deeaa4`) : voir
 `docs/MIGRATION.md` pour le détail de ce qui a été repris tel quel, adapté,
-ou volontairement laissé de côté (le frontend Next.js reste dans SCSB).
+ou volontairement laissé de côté (le frontend Next.js reste dans ball-manager-web).
 
 ## Démarrage rapide
 
@@ -51,7 +51,7 @@ Voir `ARCHITECTURE.md` pour la vue d'ensemble, et `docs/` pour le détail par do
 
 ## Ce que ce dépôt N'EST PAS
 
-Backend uniquement — aucun React, page, composant UI. Le frontend (SCSB)
+Backend uniquement — aucun React, page, composant UI. Le frontend (ball-manager-web)
 continue de fonctionner de façon autonome pendant la transition ; il
 n'appelle pas encore cette API (voir `docs/MIGRATION.md`, "Duplication
 temporaire").

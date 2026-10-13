@@ -22,8 +22,8 @@ const RENDER_SCALE = 300 / 72;
  *
  * Constaté en production le 2026-09-24 (§ "Trentième déclenchement",
  * docs/FBI.md) : ce chemin pointait vers `src/server/emarque/ocr-data`,
- * une convention Next.js de l'ancien monolithe SCSB jamais adaptée lors de
- * la migration — ce dossier n'a jamais existé dans club-manager-api, et le
+ * une convention Next.js de l'ancien monolithe ball-manager-web jamais adaptée lors de
+ * la migration — ce dossier n'a jamais existé dans ball-manager-back, et le
  * fichier `fra.traineddata` lui-même n'avait jamais été porté.
  */
 const OCR_LANG_PATH = path.join(process.cwd(), "src/integrations/emarque/ocr-data");

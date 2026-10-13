@@ -11,6 +11,7 @@ import type {
 import { formatTeamNameWithGender } from "../../util/team-name.js";
 import { localDateKey } from "../../util/timezone.js";
 import { generateOccurrences, localToUtc } from "./recurrence.js";
+import { notifyTrainingChange } from "../push/hooks.js";
 
 /**
  * Vie d'équipe — entraînements (Lot 1, voir docs/TEAM_LIFE.md). Logique
@@ -421,7 +422,11 @@ export async function updateOccurrence(
     updated_at: new Date().toISOString(),
   };
   const { data } = await ctx.db.from("training_occurrences").update(patch).eq("id", occurrence.id).select(OCCURRENCE_COLUMNS).single();
-  return (await toDtos(ctx, [data as OccurrenceRow]))[0]!;
+  const changed = data as OccurrenceRow;
+  if (occurrence.status === "scheduled" && (changed.starts_at !== occurrence.starts_at || changed.ends_at !== occurrence.ends_at || changed.club_venue_id !== occurrence.club_venue_id || changed.location_label !== occurrence.location_label)) {
+    await notifyTrainingChange(ctx.db, { clubId: ctx.clubId, occurrence: { id: changed.id, team_id: changed.team_id, starts_at: changed.starts_at, updated_at: patch.updated_at }, change: "changed" });
+  }
+  return (await toDtos(ctx, [changed]))[0]!;
 }
 
 export async function setOccurrenceStatus(ctx: TrainingCtx, occurrenceId: string, status: "scheduled" | "cancelled", reason: string | null): Promise<TrainingOccurrenceDto> {
@@ -433,6 +438,9 @@ export async function setOccurrenceStatus(ctx: TrainingCtx, occurrenceId: string
     .eq("id", occurrence.id)
     .select(OCCURRENCE_COLUMNS)
     .single();
+  if (status === "cancelled" && occurrence.status !== "cancelled") {
+    await notifyTrainingChange(ctx.db, { clubId: ctx.clubId, occurrence: { id: occurrence.id, team_id: occurrence.team_id, starts_at: occurrence.starts_at }, change: "cancelled" });
+  }
   return (await toDtos(ctx, [data as OccurrenceRow]))[0]!;
 }
 

@@ -60,7 +60,7 @@ export const MatchListItemDtoSchema = z
     /**
      * URL construite ({FFBB_API_BASE_URL}assets/{id}) — pas encore confirmé
      * accessible sans authentification depuis un navigateur (voir
-     * docs/FFBB.md côté club-manager-api). Peut nécessiter un proxy/cache
+     * docs/FFBB.md côté ball-manager-back). Peut nécessiter un proxy/cache
      * d'images côté frontend si l'affichage direct échoue.
      */
     opponentLogoUrl: z.string().nullable(),
@@ -75,7 +75,7 @@ export const MatchListItemDtoSchema = z
      * derog au calendrier, pour avoir un badge derog en cours sur les
      * matchs concernés" ; 2026-09-27 : "faut faire par couleur. acceptée =
      * vert en cours = orange refusée = rouge"). Jamais "A Créer" (état de
-     * bruit sans vraie demande, voir docs/FBI.md côté club-manager-api) —
+     * bruit sans vraie demande, voir docs/FBI.md côté ball-manager-back) —
      * `null` dans ce cas comme en l'absence de toute dérogation connue.
      * Une rencontre peut avoir PLUSIEURS dérogations distinctes (§ "82 vs
      * 51") : priorité à "en_cours" (dossier actionnable) sur "acceptee"/

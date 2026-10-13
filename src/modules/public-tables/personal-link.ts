@@ -1,6 +1,7 @@
 import type { DbClient } from "../../db/client.js";
 import { decryptSecret, encryptSecret, type EncryptedPayload } from "../../security/crypto.js";
 import { generatePublicToken, hashPublicToken } from "./token.js";
+import { links, type PersonalLinkTarget } from "../../links/links.js";
 
 /**
  * Lien personnel (espace public sans compte). Le jeton est HACHÉ pour
@@ -18,8 +19,8 @@ export function decryptPublicToken(payload: EncryptedPayload, clubId: string, li
   return decryptSecret(payload, aad(clubId, licencieId));
 }
 
-export function personalLinkUrl(baseUrl: string, clubSlug: string, target: "accueil" | "tables" | "derogations" | "matchs", token: string): string {
-  return `${baseUrl}/public/${encodeURIComponent(clubSlug)}/${target}?token=${encodeURIComponent(token)}`;
+export function personalLinkUrl(baseUrl: string, clubSlug: string, target: PersonalLinkTarget, token: string): string {
+  return links(baseUrl).personalLink(clubSlug, target, token);
 }
 
 /**

@@ -48,7 +48,7 @@ Jamais journalisé : identifiant, mot de passe, valeur d'un cookie, contenu de p
 ## Installation (VPS, en root)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/anisfut1/club-manager-api/main/ops/fbi-session-worker/install.sh \
+curl -fsSL https://raw.githubusercontent.com/anisfut1/ball-manager-back/main/ops/fbi-session-worker/install.sh \
   | sudo bash -s -- https://asihtbpfepdbafzcuosd.supabase.co <CLÉ_ANON_PUBLIQUE>
 ```
 

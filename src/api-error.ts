@@ -40,8 +40,8 @@ export class ApiError extends Error {
   }
 }
 
-export function unauthorized(message = "Authentification requise."): ApiError {
-  return new ApiError("UNAUTHORIZED", message);
+export function unauthorized(message = "Authentification requise.", code?: string): ApiError {
+  return new ApiError("UNAUTHORIZED", message, code);
 }
 
 export function forbidden(message = "Accès refusé.", code?: string): ApiError {

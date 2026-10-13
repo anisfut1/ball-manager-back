@@ -295,7 +295,7 @@ integrationsRouter.post("/fbi/test", requireClubRole("club_admin"), async (c) =>
  * (l'ancienne valeur) risque de dépasser `maxDuration: 300` et de tuer le
  * process en cours de traitement d'un job suivant, le laissant bloqué en
  * `status = 'claimed'`. Le bouton "Traiter les jobs FBI en attente"
- * (`ProcessFbiJobsButton.tsx` côté SCSB) boucle déjà automatiquement tant
+ * (`ProcessFbiJobsButton.tsx` côté ball-manager-web) boucle déjà automatiquement tant
  * qu'il reste des jobs — traiter un seul job par clic/itération est donc
  * sans perte fonctionnelle, juste plus de requêtes.
  */

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { DbClient } from "../../db/client.js";
 import { badRequest, forbidden } from "../../api-error.js";
 import { resolvePublicClub, type PublicClub } from "../public/club-resolver.js";
-import { licencieFromToken } from "../public-tables/routes.js";
+import { licencieFromRequest, type RequestLike } from "../public/credential.js";
 import { handleAction,
   handleDelete, handleAvailability, handleContext, handleCreate, handleGet, handleList, handleMessage, handleOfficial, handlePropose, handleSlotCheck, type Ctx } from "./routes.js";
 import { hasDerogationRole, loadLicencieActor } from "./service.js";
@@ -29,12 +29,10 @@ interface PublicEnv {
 export const publicDerogationRequestsRouter = new Hono<PublicEnv>();
 publicDerogationRequestsRouter.use("*", resolvePublicClub<PublicEnv>());
 
-async function publicContext(c: { get: (k: "supabase" | "publicClub") => unknown; req: { query: (k: string) => string | undefined } }): Promise<Ctx> {
-  const token = c.req.query("token");
-  if (!token) throw badRequest("Lien personnel manquant.", "TOKEN_REQUIRED");
+async function publicContext(c: { get: (k: "supabase" | "publicClub") => unknown; req: RequestLike }): Promise<Ctx> {
   const db = c.get("supabase") as DbClient;
   const club = c.get("publicClub") as PublicClub;
-  const licencie = await licencieFromToken(db, club.id, token);
+  const licencie = await licencieFromRequest(c.req, db, club.id);
   const actor = await loadLicencieActor(db, club.id, licencie.id);
   if (!hasDerogationRole(actor)) throw forbidden("Les demandes de dérogation sont réservées aux coachs et au coordinateur du club.", "DEROGATION_ROLE_REQUIRED");
   const name = licencie.first_name.trim() || licencie.last_name.trim() || "Coach";

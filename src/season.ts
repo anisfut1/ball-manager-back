@@ -1,6 +1,6 @@
 /**
  * 1er août de la saison de basket en cours (convention française : la
- * saison court d'août à juin) — même formule que SCSB
+ * saison court d'août à juin) — même formule que ball-manager-web
  * (`src/lib/season.ts#currentSeasonStart`), dupliquée ici pour filtrer les
  * anomalies (`GET /v1/clubs/:clubId/issues`) à la saison en cours : un
  * import e-Marque en erreur pour un match de mai 2025 (saison déjà

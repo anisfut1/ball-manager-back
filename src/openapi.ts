@@ -1,4 +1,6 @@
 import { OpenAPIRegistry, OpenApiGeneratorV3 } from "@asteasolutions/zod-to-openapi";
+import { AddSessionPeopleDtoSchema, AuthCodeDtoSchema, CreateAuthCodeDtoSchema, CreateDeviceSessionDtoSchema, DeviceSessionDtoSchema, ExchangeAuthCodeDtoSchema,
+  PutPushTokenDtoSchema, PublicClubListDtoSchema, SessionInfoDtoSchema, WebExchangeDtoSchema } from "./contracts/device-auth.js";
 import { z } from "./contracts/zod.js";
 import { ClubDtoSchema, TeamDtoSchema, UpdateClubDtoSchema, CreateTeamDtoSchema, UpdateTeamDtoSchema } from "./contracts/clubs.js";
 import { MatchListItemDtoSchema, MatchDetailsDtoSchema, MatchesQueryDtoSchema, MatchesPaginationDtoSchema } from "./contracts/matches.js";
@@ -1164,11 +1166,21 @@ registry.registerPath({
 });
 
 /**
+ * Identité de l'espace public (src/modules/public/credential.ts) : lien
+ * personnel en `?token=` (web historique) OU en-tête `X-Personal-Link-Token`
+ * OU session d'appareil (`Authorization: Bearer bmd_…` + `X-BM-As`, apps
+ * mobiles). Le paramètre est donc FACULTATIF dans le contrat.
+ */
+const personalTokenQuery = z.object({
+  token: z.string().min(1).optional().openapi({ description: "Lien personnel (web). Facultatif avec l'en-tête X-Personal-Link-Token ou une session d'appareil (Authorization: Bearer bmd_… + X-BM-As)." }),
+});
+
+/**
  * Mêmes demandes depuis l'ESPACE PUBLIC sans compte : licencié reconnu par
  * son lien personnel (`?token=` sur chaque requête), rôles posés depuis
  * /joueurs (`public_coach`, `public_coordinator`, `public_admin`).
  */
-const publicTokenQuery = z.object({ token: z.string().min(1) });
+const publicTokenQuery = personalTokenQuery;
 const publicDerogationErrors = {
   400: jsonResponse("Requête invalide / lien manquant", ErrorEnvelopeSchema),
   401: jsonResponse("Lien personnel invalide ou révoqué", ErrorEnvelopeSchema),
@@ -1192,7 +1204,7 @@ registry.registerPath({
   method: "get",
   path: "/v1/public/clubs/{clubSlug}/home",
   // Accueil personnel (lien personnel) : équipes jouées/coachées, agenda, résultats, tables de marque.
-  request: { params: clubSlugParam, query: z.object({ token: z.string().min(1) }) },
+  request: { params: clubSlugParam, query: personalTokenQuery },
   responses: { 200: jsonResponse("Accueil personnel", PublicHomeDtoSchema), 400: jsonResponse("Lien manquant", ErrorEnvelopeSchema), 401: jsonResponse("Lien invalide ou révoqué", ErrorEnvelopeSchema), 404: jsonResponse("Introuvable", ErrorEnvelopeSchema) },
 });
 
@@ -1265,7 +1277,7 @@ const teamIdParams = clubIdParam.extend({ teamId: z.string().uuid() });
 const seriesParams = clubIdParam.extend({ seriesId: z.string().uuid() });
 const occurrenceParams = clubIdParam.extend({ occurrenceId: z.string().uuid() });
 const rangeQuery = z.object({ from: z.string().optional(), to: z.string().optional(), teamId: z.string().uuid().optional(), kind: z.enum(["MATCH", "TRAINING"]).optional() });
-const pubToken = z.object({ token: z.string() });
+const pubToken = personalTokenQuery;
 const pubTeamParams = clubSlugParam.extend({ teamId: z.string().uuid() });
 const pubSeriesParams = clubSlugParam.extend({ seriesId: z.string().uuid() });
 const pubOccurrenceParams = clubSlugParam.extend({ occurrenceId: z.string().uuid() });
@@ -1302,6 +1314,21 @@ for (const space of ["club", "public"] as const) {
   registry.registerPath({ method: "post", path: `${base}/matches/{matchId}/convocation/preview`, security, request: { params, ...auth }, responses: { 200: jsonResponse("Aperçu : ce que recevront un parent et un joueur", ConvocationPreviewDtoSchema), ...errorResponses } });
   registry.registerPath({ method: "post", path: `${base}/matches/{matchId}/convocation/send`, security, request: { params, ...auth }, responses: { 200: jsonResponse("Convocation envoyée (ou mise à jour envoyée)", MatchTeamLifeDtoSchema), ...errorResponses, ...validationResponses } });
 }
+// App iOS : sessions d'appareil et codes d'autorisation PKCE (docs/MOBILE_AUTH.md).
+{
+  const base = "/v1/public/clubs/{clubSlug}/auth";
+  const deviceBearer = [{ BearerAuth: [] }];
+  registry.registerPath({ method: "get", path: "/v1/public/clubs", responses: { 200: jsonResponse("Clubs actifs (nom, slug, logo) — choix du club dans l'app", PublicClubListDtoSchema) } });
+  registry.registerPath({ method: "post", path: `${base}/device-sessions`, request: { params: clubSlugParam, body: jsonBody(CreateDeviceSessionDtoSchema) }, responses: { 201: jsonResponse("Session d'appareil (secret affiché une seule fois)", DeviceSessionDtoSchema), ...errorResponses } });
+  registry.registerPath({ method: "get", path: `${base}/session`, security: deviceBearer, request: { params: clubSlugParam }, responses: { 200: jsonResponse("Personnes de la session d'appareil", SessionInfoDtoSchema), ...errorResponses } });
+  registry.registerPath({ method: "delete", path: `${base}/session`, security: deviceBearer, request: { params: clubSlugParam }, responses: { 204: { description: "Session révoquée" }, ...errorResponses } });
+  registry.registerPath({ method: "post", path: `${base}/session/people`, security: deviceBearer, request: { params: clubSlugParam, body: jsonBody(AddSessionPeopleDtoSchema) }, responses: { 200: jsonResponse("Personne ajoutée à l'appareil", SessionInfoDtoSchema), ...errorResponses } });
+  registry.registerPath({ method: "delete", path: `${base}/session/people/{licencieId}`, security: deviceBearer, request: { params: clubSlugParam.extend({ licencieId: z.string().uuid() }) }, responses: { 204: { description: "Personne retirée de l'appareil" }, ...errorResponses } });
+  registry.registerPath({ method: "put", path: `${base}/session/push-token`, security: deviceBearer, request: { params: clubSlugParam, body: jsonBody(PutPushTokenDtoSchema) }, responses: { 204: { description: "Jeton APNs enregistré pour cette session" }, ...errorResponses, ...validationResponses } });
+  registry.registerPath({ method: "delete", path: `${base}/session/push-token`, security: deviceBearer, request: { params: clubSlugParam }, responses: { 204: { description: "Plus de notifications de ce club sur cet appareil" }, ...errorResponses } });
+  registry.registerPath({ method: "post", path: `${base}/codes`, request: { params: clubSlugParam, body: jsonBody(CreateAuthCodeDtoSchema) }, responses: { 201: jsonResponse("Code d'autorisation (5 min, usage unique, lié au PKCE)", AuthCodeDtoSchema), ...errorResponses } });
+  registry.registerPath({ method: "post", path: `${base}/token`, request: { params: clubSlugParam, body: jsonBody(ExchangeAuthCodeDtoSchema) }, responses: { 201: jsonResponse("Session d'appareil (ios)", DeviceSessionDtoSchema), 200: jsonResponse("Liens personnels pour la session web (web, lien de connexion)", WebExchangeDtoSchema), ...errorResponses } });
+}
 // Lot 4 : page Équipe.
 registry.registerPath({ method: "get", path: "/v1/clubs/{clubId}/team-life/teams/{teamId}/overview", security: bearerAuth, request: { params: teamIdParams }, responses: { 200: jsonResponse("Vue d'ensemble de l'équipe (prochain match, entraînement, effectif)", TeamOverviewDtoSchema), ...errorResponses } });
 registry.registerPath({ method: "get", path: "/v1/public/clubs/{clubSlug}/team-life/teams/{teamId}/overview", request: { params: pubTeamParams, query: pubToken }, responses: { 200: jsonResponse("Vue d'ensemble (joueurs de l'équipe, coach / admin)", TeamOverviewDtoSchema), ...errorResponses } });
@@ -1332,7 +1359,7 @@ export function generateOpenApiDocument() {
   return generator.generateDocument({
     openapi: "3.0.0",
     info: {
-      title: "club-manager-api",
+      title: "ball-manager-back",
       version: "0.2.0",
       description: "Backend REST du SaaS multi-clubs (FFBB/FBI/e-Marque). Voir docs/API.md.",
     },
