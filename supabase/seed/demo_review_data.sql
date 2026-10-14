@@ -43,6 +43,9 @@ begin
     ('d0000000-0000-4000-8000-000000000307', club, 'demo-review-7', u15, (((sat - 7)::text || ' 17:00')::timestamp at time zone tz), false, 'Cercle Démo', 'Salle du Cercle', 'played', 'not_applicable', now(), 'J3', 38, 52)
   on conflict (id) do update set match_datetime = excluded.match_datetime, status = excluded.status, score_home = excluded.score_home, score_away = excluded.score_away, journee = excluded.journee;
 
+  -- Numéro de rencontre fictif (sinon la fiche match affiche « N° ? »).
+  update public.matches set numero = 'DEMO-' || right(id::text, 3) where club_id = club and numero is null;
+
   -- Le coach demande les disponibilités pour le match de samedi (« À faire » de Camille).
   insert into public.match_availability_requests (club_id, match_id, team_id, opened_at, opened_by_licencie_id)
   select club, 'd0000000-0000-4000-8000-000000000301', u13, now(), 'd0000000-0000-4000-8000-000000000204'
