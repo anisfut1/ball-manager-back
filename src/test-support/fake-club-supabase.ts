@@ -581,7 +581,6 @@ function queryable<T extends object>(rows: T[]) {
   return api;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 /**
  * Imite supabase/migrations/20261018090000_delete_licencie_access.sql (même
  * filtrage club_id + licencie_id, mêmes règles de session). Les écritures sont
@@ -617,6 +616,7 @@ function fakeDeleteLicencieAccess(state: FakeClubSupabaseState, args: { p_club_i
   return { data: photos, error: null };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function buildFakeClubSupabase(state: FakeClubSupabaseState): any {
   const clubsTable = {
     select: (_cols?: string) => {
