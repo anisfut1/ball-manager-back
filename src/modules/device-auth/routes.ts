@@ -8,6 +8,7 @@ import { parse } from "../trainings/routes.js";
 import { decryptPublicToken } from "../public-tables/personal-link.js";
 import type { EncryptedPayload } from "../../security/crypto.js";
 import { AddSessionPeopleDtoSchema, CreateAuthCodeDtoSchema, CreateDeviceSessionDtoSchema, ExchangeAuthCodeDtoSchema, PutPushTokenDtoSchema } from "../../contracts/device-auth.js";
+import { deleteLicencieAccess } from "../account-deletion/service.js";
 import { registerPushToken, removePushToken, sendTestPush } from "../push/service.js";
 import {
   addGrants,
@@ -82,6 +83,19 @@ deviceAuthRouter.get("/session", async (c) => {
 deviceAuthRouter.delete("/session", async (c) => {
   const session = await requireSession(c);
   await revokeDeviceSession(c.get("supabase"), session.id);
+  return c.body(null, 204);
+});
+
+/**
+ * DELETE …/auth/me — suppression de l'accès de TOUTES les personnes de cette
+ * session d'appareil (guideline Apple 5.1.1(v)). Aucun identifiant en entrée :
+ * seules les personnes de la session s'appliquent. Ni lien personnel ni compte
+ * ne suffisent. La fiche sportive reste au club (docs/MOBILE_AUTH.md).
+ */
+deviceAuthRouter.delete("/me", async (c) => {
+  limit(c, "delete-account", 10);
+  const session = await requireSession(c);
+  await deleteLicencieAccess(c.get("supabase"), session.clubId, session.grants.map((g) => g.licencieId));
   return c.body(null, 204);
 });
 
