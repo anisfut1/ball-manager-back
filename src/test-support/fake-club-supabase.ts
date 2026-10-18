@@ -309,6 +309,12 @@ export interface FakeClubSupabaseState {
   authCodes: FakeRow[];
   devicePushTokens: FakeRow[];
   notificationOutbox: FakeRow[];
+  /** Stockage : chemins supprimés par bucket, et erreur à simuler sur `remove`. */
+  storageRemovals: { bucket: string; paths: string[] }[];
+  storageRemoveError: string | null;
+  /** `rpc("delete_licencie_access")` : appels reçus, et échec simulé APRÈS toutes les écritures (la fonction SQL est une transaction : tout est annulé). */
+  deleteLicencieAccessCalls: { p_club_id: string; p_licencie_ids: string[] }[];
+  deleteLicencieAccessFailure: string | null;
   isPlatformAdmin: boolean;
   /** Clés `${clubId}:${integration}` actuellement verrouillées (voir try_acquire_sync_lock/release_sync_lock). */
   syncLocks: Set<string>;
@@ -361,6 +367,10 @@ export function makeFakeClubSupabaseState(overrides: Partial<FakeClubSupabaseSta
     authCodes: [],
     devicePushTokens: [],
     notificationOutbox: [],
+    storageRemovals: [],
+    storageRemoveError: null,
+    deleteLicencieAccessCalls: [],
+    deleteLicencieAccessFailure: null,
     isPlatformAdmin: false,
     syncLocks: new Set(),
     ...overrides,
@@ -572,6 +582,41 @@ function queryable<T extends object>(rows: T[]) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+/**
+ * Imite supabase/migrations/20261018090000_delete_licencie_access.sql (même
+ * filtrage club_id + licencie_id, mêmes règles de session). Les écritures sont
+ * annulées en bloc si `deleteLicencieAccessFailure` est posé, comme la
+ * transaction SQL. Le vrai SQL est vérifié par supabase/tests/delete_licencie_access.sql.
+ */
+function fakeDeleteLicencieAccess(state: FakeClubSupabaseState, args: { p_club_id: string; p_licencie_ids: string[] }): { data: string[] | null; error: { message: string } | null } {
+  state.deleteLicencieAccessCalls.push({ p_club_id: args.p_club_id, p_licencie_ids: [...args.p_licencie_ids] });
+  const snapshot = { licencies: state.licencies, publicTokens: state.publicTokens, claimRequests: state.claimRequests, deviceSessions: state.deviceSessions, deviceSessionGrants: state.deviceSessionGrants, devicePushTokens: state.devicePushTokens };
+  const club = args.p_club_id;
+  const ids = new Set(args.p_licencie_ids ?? []);
+  if (ids.size === 0) return { data: [], error: null };
+  const mine = (r: { club_id?: unknown; licencie_id?: unknown }) => r.club_id === club && ids.has(r.licencie_id as string);
+
+  const tokenIds = new Set(state.publicTokens.filter(mine).map((t) => t.id));
+  const isTarget = (g: FakeRow) => g.club_id === club && (ids.has(g.licencie_id as string) || tokenIds.has(g.token_id as string));
+  const sessionIds = new Set(state.deviceSessionGrants.filter(isTarget).map((g) => g.session_id as string));
+  state.deviceSessionGrants = state.deviceSessionGrants.filter((g) => !isTarget(g));
+  const emptied = (sessionId: string) => !state.deviceSessionGrants.some((g) => g.session_id === sessionId);
+  const removedSessions = new Set(state.deviceSessions.filter((s) => s.club_id === club && sessionIds.has(s.id as string) && emptied(s.id as string)).map((s) => s.id as string));
+  state.deviceSessions = state.deviceSessions.filter((s) => !removedSessions.has(s.id as string));
+  state.devicePushTokens = state.devicePushTokens.filter((t) => !removedSessions.has(t.session_id as string));
+  state.publicTokens = state.publicTokens.filter((t) => !mine(t));
+  state.claimRequests = state.claimRequests.filter((r) => !mine(r as { club_id?: unknown; licencie_id?: unknown }));
+
+  const photos = state.licencies.filter((l) => l.club_id === club && ids.has(l.id) && l.photo_url).map((l) => l.photo_url as string);
+  state.licencies = state.licencies.map((l) => (l.club_id === club && ids.has(l.id) ? { ...l, email: null, phone: null, photo_url: null, public_admin: false, public_coach: false, public_coordinator: false } : l));
+
+  if (state.deleteLicencieAccessFailure) {
+    Object.assign(state, snapshot);
+    return { data: null, error: { message: state.deleteLicencieAccessFailure } };
+  }
+  return { data: photos, error: null };
+}
+
 export function buildFakeClubSupabase(state: FakeClubSupabaseState): any {
   const clubsTable = {
     select: (_cols?: string) => {
@@ -1022,6 +1067,15 @@ export function buildFakeClubSupabase(state: FakeClubSupabaseState): any {
   };
 
   return {
+    storage: {
+      from: (bucket: string) => ({
+        remove(paths: string[]) {
+          if (state.storageRemoveError) return Promise.resolve({ data: null, error: { message: state.storageRemoveError } });
+          state.storageRemovals.push({ bucket, paths: [...paths] });
+          return Promise.resolve({ data: [], error: null });
+        },
+      }),
+    },
     from(table: string) {
       switch (table) {
         case "clubs":
@@ -1166,7 +1220,8 @@ export function buildFakeClubSupabase(state: FakeClubSupabaseState): any {
           throw new Error(`Table inattendue dans le fake Supabase de test : ${table}`);
       }
     },
-    rpc(fn: string, args?: { p_club_id?: string; p_integration?: string }) {
+    rpc(fn: string, args?: { p_club_id?: string; p_integration?: string; p_licencie_ids?: string[] }) {
+      if (fn === "delete_licencie_access") return Promise.resolve(fakeDeleteLicencieAccess(state, args as { p_club_id: string; p_licencie_ids: string[] }));
       if (fn === "is_platform_admin") return Promise.resolve({ data: state.isPlatformAdmin, error: null });
       if (fn === "try_acquire_sync_lock") {
         const key = `${args?.p_club_id}:${args?.p_integration}`;

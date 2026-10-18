@@ -1628,6 +1628,7 @@ export interface Database {
       claim_next_fbi_job: Fn<{ p_worker_id: string }, FbiJobRow | null>;
       claim_next_fbi_job_for_club: Fn<{ p_club_id: string; p_worker_id: string }, FbiJobRow | null>;
       claim_next_discover_job_in_session: Fn<{ p_club_id: string; p_worker_id: string }, FbiJobRow | null>;
+      delete_licencie_access: Fn<{ p_club_id: string; p_licencie_ids: string[] }, string[]>;
     };
     Enums: {
       club_role: ClubRole;
