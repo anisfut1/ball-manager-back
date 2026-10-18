@@ -23,7 +23,8 @@ import { recordLicenceImportRun, syncLicenciesFromFbi } from "./sync-from-fbi.js
 import { rejectedFieldsFor, resolveLicencieEditPermission } from "./profile-fields.js";
 import { requireClubRole } from "../../auth/middleware.js";
 import { autoAssignTeamsForClub } from "./auto-assign-teams.js";
-import { LICENCIE_PHOTO_TYPES, MAX_LICENCIE_PHOTO_BYTES, removeStoredLicenciePhoto, uploadLicenciePhoto, type LicenciePhotoType } from "../../storage/licencie-photos.js";
+import { LICENCIE_PHOTO_TYPES, MAX_LICENCIE_PHOTO_BYTES, removeStoredLicenciePhoto, storedPhotoPath, uploadLicenciePhoto, type LicenciePhotoType } from "../../storage/licencie-photos.js";
+import { logError } from "../../logger.js";
 
 export const licenciesRouter = new Hono<AppEnv>();
 
@@ -586,11 +587,14 @@ licenciesRouter.delete("/:licencieId", requireClubRole("club_admin"), async (c) 
 
   const serviceSupabase = createServiceSupabaseClient();
 
-  const { data: existing } = await serviceSupabase.from("licencies").select("id").eq("id", licencieId).eq("club_id", club.id).maybeSingle();
+  const { data: existing } = await serviceSupabase.from("licencies").select("id, photo_url").eq("id", licencieId).eq("club_id", club.id).maybeSingle();
   if (!existing) throw notFound("Licencié introuvable.");
 
   const { error } = await serviceSupabase.from("licencies").delete().eq("id", licencieId).eq("club_id", club.id);
   if (error) throw new Error(`Suppression du licencié échouée : ${error.message}`);
+  await removeStoredLicenciePhoto(serviceSupabase, existing.photo_url, club.id).catch((storageError: unknown) =>
+    logError("Photo de licencié non supprimée du stockage", storageError, { clubId: club.id, path: storedPhotoPath(existing.photo_url, club.id) }),
+  );
 
   const result: DeleteLicencieResultDto = { deleted: true };
   return c.json(result);

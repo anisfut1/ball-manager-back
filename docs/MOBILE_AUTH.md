@@ -31,6 +31,7 @@ Pour l'accueil (« À faire ») et le planning, l'app envoie `tokens: ["as:<lice
 | `POST /device-sessions` `{ tokens, platform: "ios" }` | Amorçage depuis un lien personnel reçu par l'app (Universal Link). L'app ne garde **pas** le jeton. |
 | `GET /session` | Personnes de la session. |
 | `DELETE /session` | Déconnexion de cet appareil. |
+| `DELETE /me` | **Suppression de l'accès** de toutes les personnes de cette session (voir « Suppression de l'accès »). `204`. |
 | `POST /session/people` `{ tokens }` | Ajouter un enfant (son lien le prouve). |
 | `DELETE /session/people/{licencieId}` | Retirer une personne de l'appareil. |
 | `PUT /session/push-token` `{ token, environment, appVersion? }` | Jeton APNs de cet iPhone pour cette session (voir `ball-manager-web/docs/IOS_PUSH.md`). |
@@ -90,6 +91,19 @@ Générateurs migrés :
 
 Elles sont additives, avec RLS activée et aucune policy (accès par l'API seulement). Les deux sont appliquées.
 
-## Pas de suppression de compte dans l'app
+## Suppression de l'accès (guideline Apple 5.1.1(v))
 
-L'app ne crée aucun compte : l'accès vient d'un lien émis par le club. « Se déconnecter » révoque la session et son jeton push. La suppression des données passe par le club.
+L'app ne crée aucun compte : l'accès vient d'un lien émis par le club. `DELETE /v1/public/clubs/{slug}/auth/me` (session d'appareil `bmd_…` uniquement ; un lien personnel ne suffit pas) supprime l'accès de **toutes** les personnes de la session qui appelle, et d'aucune autre. La route n'accepte aucun identifiant de licencié ni de club : ils sont ignorés. Limite : 10 appels par minute et par IP.
+
+**Supprimé**, en une seule transaction (`public.delete_licencie_access`, migration `20261018090000_delete_licencie_access.sql`, rôle service) :
+- tous les jetons de lien personnel (actifs ou révoqués) de ces personnes, donc l'accès sur **tous** les appareils et sur le web ;
+- leurs droits (`device_session_grants`) dans **toutes** les sessions ; une session n'est supprimée, avec son jeton push, que lorsqu'elle n'a plus aucun droit ;
+- sur la fiche : `email`, `phone`, `photo_url`, et les drapeaux `public_admin`, `public_coach`, `public_coordinator` remis à `false` ;
+- leurs demandes de lien (`licencie_claim_requests`) ;
+- puis, après la transaction, le fichier photo du bucket `licencie-photos`. Un échec du stockage est journalisé avec le chemin, sans faire échouer la suppression.
+
+**Conservé** : la fiche sportive (nom, numéro de licence, équipe, catégorie, `coached_team_ids`, date de naissance) pour les feuilles de marque et les historiques ; les messages et demandes de dérogation ; `notification_outbox`. Les comptes Supabase Auth du personnel ne sont pas concernés.
+
+**Session partagée** : il n'y a qu'un jeton actif par licencié. Si un autre parent a, sur son appareil, un droit sur cet enfant, il le perd. Ses autres enfants restent accessibles sur cet appareil.
+
+Test SQL : `supabase/tests/delete_licencie_access.sql`. Tests Node : `src/modules/account-deletion/`.

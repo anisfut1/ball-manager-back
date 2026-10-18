@@ -1,7 +1,7 @@
 # Inventaire des routes de l'API
 
 > Fichier **généré** par `npm run docs:routes` (ops/docs/generate-routes-doc.ts) — ne pas modifier à la main.
-> 180 routes montées dans le code, 173 décrites dans le contrat OpenAPI (`/openapi.json`, `/docs`).
+> 185 routes montées dans le code, 177 décrites dans le contrat OpenAPI (`/openapi.json`, `/docs`).
 
 Accès : **Compte connecté** = JWT Supabase (`Authorization: Bearer`), droits vérifiés par club ; **Public** = sans compte ; **Public (lien perso si action)** = lecture libre, écriture avec le jeton du lien personnel ; **Secret cron** = `CRON_SECRET`.
 
@@ -216,6 +216,7 @@ Accès : **Compte connecté** = JWT Supabase (`Authorization: Bearer`), droits v
 | GET | `/internal/cron/fbi-jobs` | Secret cron |  |
 | GET | `/internal/cron/fbi-reachability` | Secret cron |  |
 | GET | `/internal/cron/ffbb` | Secret cron |  |
+| GET | `/internal/cron/push` | Secret cron |  |
 
 ## Plateforme (platform_admin)
 
@@ -242,10 +243,14 @@ Accès : **Compte connecté** = JWT Supabase (`Authorization: Bearer`), droits v
 |---|---|---|---|
 | POST | `/v1/public/clubs/:clubSlug/auth/codes` | Public (lien perso si action) | Code d'autorisation (5 min, usage unique, lié au PKCE) |
 | POST | `/v1/public/clubs/:clubSlug/auth/device-sessions` | Public (lien perso si action) | Session d'appareil (secret affiché une seule fois) |
+| DELETE | `/v1/public/clubs/:clubSlug/auth/me` | Compte connecté | Accès supprimé pour toutes les personnes de la session (fiches sportives conservées) |
 | DELETE | `/v1/public/clubs/:clubSlug/auth/session` | Compte connecté | Session révoquée |
 | GET | `/v1/public/clubs/:clubSlug/auth/session` | Compte connecté | Personnes de la session d'appareil |
 | POST | `/v1/public/clubs/:clubSlug/auth/session/people` | Compte connecté | Personne ajoutée à l'appareil |
 | DELETE | `/v1/public/clubs/:clubSlug/auth/session/people/:licencieId` | Compte connecté | Personne retirée de l'appareil |
+| POST | `/v1/public/clubs/:clubSlug/auth/session/push-test` | Compte connecté | Notification de test vers cet iPhone seulement (sent / not_configured / no_token / failed) |
+| DELETE | `/v1/public/clubs/:clubSlug/auth/session/push-token` | Compte connecté | Plus de notifications de ce club sur cet appareil |
+| PUT | `/v1/public/clubs/:clubSlug/auth/session/push-token` | Compte connecté | Jeton APNs enregistré pour cette session |
 | POST | `/v1/public/clubs/:clubSlug/auth/token` | Public (lien perso si action) | Liens personnels pour la session web (web, lien de connexion) |
 
 ## Public — club

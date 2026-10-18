@@ -15,6 +15,12 @@ vi.mock("../../db/client.js", () => ({
   createAnonSupabaseClient: () => ({}),
 }));
 
+const removeStoredLicenciePhoto = vi.fn(async (..._args: unknown[]) => undefined);
+vi.mock("../../storage/licencie-photos.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../storage/licencie-photos.js")>();
+  return { ...actual, removeStoredLicenciePhoto: (...args: unknown[]) => removeStoredLicenciePhoto(...args) };
+});
+
 const { app } = await import("../../app.js");
 
 const CLUB_A = {
@@ -57,6 +63,7 @@ function request(path: string, init: RequestInit = {}) {
 }
 
 beforeEach(() => {
+  removeStoredLicenciePhoto.mockClear();
   currentUserId = "user-admin";
   state = makeFakeClubSupabaseState({
     clubs: [{ ...CLUB_A }, { ...CLUB_B }],
@@ -286,6 +293,26 @@ describe("DELETE /v1/clubs/:clubId/licencies/:licencieId (club_admin) — suppre
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ deleted: true });
     expect(state.licencies.find((l) => l.id === "l1")).toBeUndefined();
+  });
+
+  it("supprime aussi la photo du stockage (URL lue AVANT la suppression en base)", async () => {
+    const photoUrl = `https://x.supabase.co/storage/v1/object/public/licencie-photos/${CLUB_A.id}/l1/abc.webp`;
+    state.licencies = [licencie({ id: "l1", photo_url: photoUrl })];
+
+    const res = await request("/l1", { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect(state.licencies.find((l) => l.id === "l1")).toBeUndefined();
+    expect(removeStoredLicenciePhoto).toHaveBeenCalledTimes(1);
+    expect(removeStoredLicenciePhoto.mock.calls[0]!.slice(1)).toEqual([photoUrl, CLUB_A.id]);
+  });
+
+  it("un échec du stockage ne fait pas échouer la suppression", async () => {
+    state.licencies = [licencie({ id: "l1", photo_url: `https://x.supabase.co/storage/v1/object/public/licencie-photos/${CLUB_A.id}/l1/abc.webp` })];
+    removeStoredLicenciePhoto.mockRejectedValueOnce(new Error("storage down"));
+
+    const res = await request("/l1", { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: true });
   });
 
   it("404 pour un licencié d'un AUTRE club, jamais une suppression cross-tenant silencieuse", async () => {

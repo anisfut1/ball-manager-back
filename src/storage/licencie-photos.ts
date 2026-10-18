@@ -35,5 +35,7 @@ export function storedPhotoPath(url: string | null, clubId: string): string | nu
 export async function removeStoredLicenciePhoto(supabase: DbClient, url: string | null, clubId: string): Promise<void> {
   const path = storedPhotoPath(url, clubId);
   if (!path) return;
-  await supabase.storage.from(LICENCIE_PHOTOS_BUCKET).remove([path]);
+  const { error } = await supabase.storage.from(LICENCIE_PHOTOS_BUCKET).remove([path]);
+  // Supabase Storage renvoie l'erreur au lieu de la lever : sans ceci, un échec serait invisible pour les appelants qui journalisent.
+  if (error) throw new Error(`Suppression de la photo échouée : ${error.message}`);
 }
