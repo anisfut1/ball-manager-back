@@ -85,6 +85,8 @@ describe("GET /:clubId/issues", () => {
       type: "emarque_needs_review",
       severity: "warning",
     });
+    // Équipe, adversaire et horaire de la rencontre, comme pour les conflits.
+    expect(body.issues[0].relatedMatches).toEqual([expect.objectContaining({ matchId: "match-1", opponentName: "Adversaire", matchDatetime: "2026-09-26T13:30:00.000Z" })]);
   });
 
   it("renvoie une anomalie de rapprochement calendrier FBI enrichie des infos du match FFBB correspondant", async () => {
