@@ -9,6 +9,7 @@ import { attemptBrowserFbiLogin } from "../../integrations/fbi/browser-login-att
 import { FbiError, type FbiErrorCode } from "../../integrations/fbi/errors.js";
 import { FfbbPublicProvider } from "../../integrations/ffbb/public-provider.js";
 import { syncFfbb } from "../../integrations/ffbb/sync.js";
+import { ffbbLocalWorkerUntil } from "../../integrations/ffbb/local-lease.js";
 import { claimNextDiscoverJobInSession, claimNextJobForClub } from "../../jobs/claim.js";
 import { processJobBatch } from "../../jobs/process-batch.js";
 import { checkAllDerogationsForClubSync } from "../derogations/check-all-derogations-sync.js";
@@ -467,6 +468,14 @@ integrationsRouter.get("/sync-runs", async (c) => {
 integrationsRouter.post("/ffbb/sync", requireClubRole("club_admin"), async (c) => {
   const { club } = c.get("club");
   const serviceSupabase = createServiceSupabaseClient();
+
+  // Worker local actif : la synchro est faite par le poste du club (l'API
+  // FFBB refuse l'adresse de Vercel). On la rend due tout de suite : elle
+  // part à la prochaine passe du worker (quelques minutes).
+  if (await ffbbLocalWorkerUntil(serviceSupabase)) {
+    await serviceSupabase.from("clubs").update({ ffbb_next_sync_at: new Date().toISOString() }).eq("id", club.id);
+    throw conflict("Synchronisation confiée au poste du club : elle partira dans les prochaines minutes.", "FFBB_SYNC_DELEGATED_TO_LOCAL_WORKER");
+  }
 
   const { data: acquired, error: lockError } = await serviceSupabase.rpc("try_acquire_sync_lock", {
     p_club_id: club.id,

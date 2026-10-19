@@ -42,7 +42,10 @@ export const FFBB_USER_AGENT = "okhttp/4.12.0";
  * simple à 2 clubs et permet de monter en charge sans changer le mécanisme
  * (voir docs/MULTI_TENANCY.md).
  */
-export const FFBB_SYNC_INTERVAL_MINUTES = 15;
+// 60 min (2026-10-19, au lieu de 15) : l'API FFBB a banni l'adresse de
+// Vercel le 13/10, probablement pour trop de requêtes. Le calendrier de la
+// saison bouge peu ; un score arrive au plus 1 h après la fin du match.
+export const FFBB_SYNC_INTERVAL_MINUTES = 60;
 
 /**
  * Pause après un refus de l'API FFBB (HTTP 403, page « Forbidden » d'un

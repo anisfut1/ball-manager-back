@@ -132,7 +132,7 @@ describe("syncAllDueClubs", () => {
 
     const delayMinutes = (id: string) => (Date.parse(state.nextSyncAt![id]!) - before) / 60_000;
     expect(delayMinutes("club-a")).toBeGreaterThanOrEqual(359);
-    expect(delayMinutes("club-b")).toBeLessThan(16);
+    expect(delayMinutes("club-b")).toBeLessThan(61);
   });
 
   it("ignore un club déjà verrouillé (déclenchement manuel admin en cours) sans toucher aux autres", async () => {

@@ -5,6 +5,7 @@ import { unauthorized } from "../../api-error.js";
 import { createServiceSupabaseClient } from "../../db/client.js";
 import { syncAllDueClubs } from "../../integrations/ffbb/scheduler.js";
 import { FfbbPublicProvider } from "../../integrations/ffbb/public-provider.js";
+import { ffbbLocalWorkerUntil } from "../../integrations/ffbb/local-lease.js";
 import { enqueueEmarqueDiscoveryJobsForAllClubs } from "../../jobs/enqueue-emarque.js";
 import { enqueueFbiVerificationJobsForAllClubs } from "../../jobs/enqueue-fbi-verifications.js";
 import { claimNextDiscoverJobInSession, claimNextJob } from "../../jobs/claim.js";
@@ -45,6 +46,9 @@ internalRouter.use("*", async (c, next) => {
 internalRouter.get("/cron/ffbb", async (c) => {
   const supabase = createServiceSupabaseClient();
   try {
+    // Worker local actif (Mac du club) : c'est lui qui synchronise FFBB.
+    const localUntil = await ffbbLocalWorkerUntil(supabase);
+    if (localUntil) return c.json({ skipped: "worker_local", until: localUntil.toISOString() });
     const result = await syncAllDueClubs(supabase, new FfbbPublicProvider());
     return c.json(result);
   } catch (error) {
