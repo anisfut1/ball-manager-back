@@ -773,6 +773,21 @@ export interface Database {
         }
       >;
 
+      issue_dismissals: Table<
+        {
+          club_id: string;
+          issue_key: string;
+          dismissed_by: string | null;
+          dismissed_at: string;
+        },
+        {
+          club_id: string;
+          issue_key: string;
+          dismissed_by?: string | null;
+          dismissed_at?: string;
+        }
+      >;
+
       notification_outbox: Table<
         {
           id: string;

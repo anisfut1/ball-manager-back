@@ -991,6 +991,14 @@ registry.registerPath({
 });
 
 registry.registerPath({
+  method: "post",
+  path: "/v1/clubs/{clubId}/issues/dismiss",
+  security: bearerAuth,
+  request: { params: clubIdParam, body: { content: { "application/json": { schema: z.object({ key: z.string() }) } } } },
+  responses: { 200: jsonResponse("Anomalie retirée de la liste", z.object({ dismissed: z.literal(true) })), ...errorResponses },
+});
+
+registry.registerPath({
   method: "get",
   path: "/v1/jobs/{jobId}",
   security: bearerAuth,

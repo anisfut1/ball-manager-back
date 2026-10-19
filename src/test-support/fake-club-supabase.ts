@@ -309,6 +309,7 @@ export interface FakeClubSupabaseState {
   authCodes: FakeRow[];
   devicePushTokens: FakeRow[];
   notificationOutbox: FakeRow[];
+  issueDismissals: FakeRow[];
   /** Stockage : chemins supprimés par bucket, et erreur à simuler sur `remove`. */
   storageRemovals: { bucket: string; paths: string[] }[];
   storageRemoveError: string | null;
@@ -367,6 +368,7 @@ export function makeFakeClubSupabaseState(overrides: Partial<FakeClubSupabaseSta
     authCodes: [],
     devicePushTokens: [],
     notificationOutbox: [],
+    issueDismissals: [],
     storageRemovals: [],
     storageRemoveError: null,
     deleteLicencieAccessCalls: [],
@@ -1166,6 +1168,11 @@ export function buildFakeClubSupabase(state: FakeClubSupabaseState): any {
         case "notification_outbox":
           return mutableTable(() => state.notificationOutbox, (rows) => (state.notificationOutbox = rows), {
             defaults: () => ({ status: "pending", attempts: 0, last_error: null, devices_sent: 0, created_at: new Date().toISOString(), next_attempt_at: new Date().toISOString(), sent_at: null }),
+          });
+        case "issue_dismissals":
+          return mutableTable(() => state.issueDismissals, (rows) => (state.issueDismissals = rows), {
+            defaults: () => ({ dismissed_by: null, dismissed_at: fakeNow() }),
+            unique: (row, rows) => rows.some((r) => r.club_id === row.club_id && r.issue_key === row.issue_key),
           });
         case "match_laundry_assignments":
           return mutableTable(() => state.laundry, (rows) => (state.laundry = rows), { defaults: () => ({ seen_at: null, updated_at: fakeNow() }) });

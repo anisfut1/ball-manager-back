@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectVenueConflicts, type VenueConflictCandidate } from "./venue-conflicts.js";
+import { detectTeamConflicts, detectVenueConflicts, type VenueConflictCandidate } from "./venue-conflicts.js";
 
 function candidate(overrides: Partial<VenueConflictCandidate> = {}): VenueConflictCandidate {
   return {
@@ -25,8 +25,8 @@ describe("detectVenueConflicts", () => {
     const conflicts = detectVenueConflicts([matchA, matchB]);
 
     expect(conflicts).toHaveLength(2);
-    expect(conflicts).toContainEqual({ matchId: "match-a", conflictingMatchIds: ["match-b"], conflictingLabel: "n°2 vs U11" });
-    expect(conflicts).toContainEqual({ matchId: "match-b", conflictingMatchIds: ["match-a"], conflictingLabel: "n°1 vs U9" });
+    expect(conflicts).toContainEqual({ matchId: "match-a", conflictingMatchIds: ["match-b"], conflictingLabel: "n°2 vs U11 à 11:00" });
+    expect(conflicts).toContainEqual({ matchId: "match-b", conflictingMatchIds: ["match-a"], conflictingLabel: "n°1 vs U9 à 11:00" });
   });
 
   it("ne détecte pas de conflit si même horaire mais salle différente", () => {
@@ -41,6 +41,13 @@ describe("detectVenueConflicts", () => {
     const matchB = candidate({ id: "match-b", matchDatetime: "2026-10-11T11:00:00.000Z" });
 
     expect(detectVenueConflicts([matchA, matchB])).toEqual([]);
+  });
+
+  it("détecte deux créneaux qui se chevauchent dans la même salle (11h et 12h)", () => {
+    const matchA = candidate({ id: "match-a", matchDatetime: "2026-10-11T09:00:00.000Z" });
+    const matchB = candidate({ id: "match-b", matchDatetime: "2026-10-11T10:00:00.000Z" });
+
+    expect(detectVenueConflicts([matchA, matchB])).toHaveLength(2);
   });
 
   it("normalise la casse/les espaces de venueRawLabel avant comparaison", () => {
@@ -74,5 +81,27 @@ describe("detectVenueConflicts", () => {
     expect(conflicts).toHaveLength(3);
     const forA = conflicts.find((c) => c.matchId === "match-a");
     expect(forA?.conflictingMatchIds.sort()).toEqual(["match-b", "match-c"]);
+  });
+});
+
+describe("detectTeamConflicts", () => {
+  const base = { numero: "1", opponentName: "Adversaire", teamId: "team-u13" };
+
+  it("détecte une même équipe programmée deux fois le même jour", () => {
+    const conflicts = detectTeamConflicts([
+      { ...base, id: "match-a", matchDatetime: "2026-10-11T08:00:00.000Z" },
+      { ...base, id: "match-b", numero: "2", matchDatetime: "2026-10-11T14:00:00.000Z" },
+    ]);
+    expect(conflicts.map((c) => c.matchId).sort()).toEqual(["match-a", "match-b"]);
+  });
+
+  it("ignore deux équipes différentes ou deux jours différents", () => {
+    expect(
+      detectTeamConflicts([
+        { ...base, id: "match-a", matchDatetime: "2026-10-11T08:00:00.000Z" },
+        { ...base, id: "match-b", teamId: "team-u15", matchDatetime: "2026-10-11T08:00:00.000Z" },
+        { ...base, id: "match-c", matchDatetime: "2026-10-12T08:00:00.000Z" },
+      ]),
+    ).toEqual([]);
   });
 });
