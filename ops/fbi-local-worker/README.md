@@ -30,6 +30,23 @@ ne pas la mettre. Le worker demande alors le mot de passe FBI au démarrage
 est lu en base. `SUPABASE_SERVICE_ROLE_KEY` : Supabase → Project Settings → API
 Keys → `service_role` → Reveal.
 
+## Synchro FFBB depuis ce poste
+
+Depuis le 13/10/2026, l'API FFBB (api.ffbb.app) refuse l'adresse de Vercel
+(HTTP 403) mais répond depuis le poste du club. Le worker fait donc aussi la
+synchronisation FFBB (matchs, scores, classements) :
+
+- à chaque passe, il pose le bail `platform_settings.ffbb_local_until`
+  (30 min) : tant qu'il court, Vercel ne synchronise plus FFBB ;
+- il synchronise les clubs dus, avec la même planification que Vercel
+  (toutes les 60 min ; pause de 6 h après un refus 403, même depuis ce poste) ;
+- le bouton « Synchroniser » de l'appli rend la synchro due : elle part à la
+  passe suivante du worker ;
+- à l'arrêt (Ctrl+C), le bail est libéré et Vercel reprend la main ; poste
+  éteint : le bail expire seul au bout de 30 min.
+
+`FFBB_LOCAL=0` dans `.env.fbi-local` pour laisser FFBB à Vercel.
+
 ## Lancer
 
 ```bash

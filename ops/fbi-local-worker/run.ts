@@ -71,6 +71,9 @@ const { launchServerlessBrowser } = await import("../../src/integrations/fbi/bro
 const { BrowserFbiClient } = await import("../../src/integrations/fbi/browser-client.js");
 const selectors = await import("../../src/integrations/fbi/selectors.js");
 const { ask } = await import("../fbi-session-worker/prompt.js");
+const { syncAllDueClubs } = await import("../../src/integrations/ffbb/scheduler.js");
+const { FfbbPublicProvider } = await import("../../src/integrations/ffbb/public-provider.js");
+const { FFBB_LOCAL_LEASE_KEY } = await import("../../src/integrations/ffbb/local-lease.js");
 type Session = Awaited<ReturnType<InstanceType<typeof BrowserFbiClient>["login"]>>;
 
 const supabase = createServiceSupabaseClient();
@@ -80,6 +83,30 @@ const logFile = `fbi-local-worker-${new Date().toISOString().replace(/[:.]/g, "-
 function record(event: string, data: Record<string, unknown> = {}, message?: string): void {
   appendFileSync(logFile, `${JSON.stringify({ at: new Date().toISOString(), event, ...data })}\n`);
   console.log(`[${new Date().toISOString()}] ${message ?? event}`);
+}
+
+// Synchro FFBB depuis ce poste (2026-10-19) : api.ffbb.app refuse l'adresse
+// de Vercel depuis le 13/10 mais répond à celle du club. `FFBB_LOCAL=0` pour
+// la laisser à Vercel.
+const FFBB_LOCAL = process.env.FFBB_LOCAL !== "0";
+
+async function setFfbbLease(until: Date | null): Promise<void> {
+  const { error } = await supabase
+    .from("platform_settings")
+    .upsert({ key: FFBB_LOCAL_LEASE_KEY, value: until ? until.toISOString() : "", updated_at: new Date().toISOString() }, { onConflict: "key" });
+  if (error) record("ffbb_lease_error", { error: error.message }, `bail FFBB : écriture impossible (${error.message})`);
+}
+
+/** Clubs dont la synchro FFBB est due (même planification que Vercel, pause de 6 h après un refus 403). */
+async function syncFfbbIfDue(): Promise<void> {
+  await setFfbbLease(new Date(Date.now() + LEASE_MIN * 60_000));
+  try {
+    const result = await syncAllDueClubs(supabase, new FfbbPublicProvider());
+    if (result.clubsDue > 0) record("ffbb_sync", { ...result }, `synchro FFBB : ${result.clubsSynced} club(s) à jour, ${result.clubsFailed} en erreur`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message.split("\n")[0] : String(error);
+    record("ffbb_sync", { error: message }, `synchro FFBB en erreur : ${message}`);
+  }
 }
 
 async function setLease(until: Date | null): Promise<void> {
@@ -177,6 +204,8 @@ async function dropSession(): Promise<void> {
 
 async function pass(): Promise<void> {
   await setLease(new Date(Date.now() + LEASE_MIN * 60_000));
+  // FFBB d'abord : indépendant de FBI (une passe FBI sautée ne bloque pas les matchs).
+  if (FFBB_LOCAL) await syncFfbbIfDue();
 
   // Matchs tout juste passés « joués » (synchro FFBB) : recherche de feuille
   // créée dès cette passe, sans attendre le planificateur de l'API (base seule).
@@ -276,13 +305,14 @@ let stopping = false;
 process.on("SIGINT", () => {
   if (stopping) process.exit(130);
   stopping = true;
-  record("stopped", {}, "arrêt : bail libéré (Vercel reprend la main), navigateur fermé sans déconnexion FBI");
+  record("stopped", {}, "arrêt : baux FBI et FFBB libérés (Vercel reprend la main), navigateur fermé sans déconnexion FBI");
   void setLease(null)
+    .then(() => (FFBB_LOCAL ? setFfbbLease(null) : undefined))
     .then(() => browser.close())
     .finally(() => process.exit(0));
 });
 
-record("started", { workerId, clubId, intervalMin: INTERVAL_MIN, maxJobsPerPass: MAX_JOBS_PER_PASS, relogin: RELOGIN }, `worker FBI local démarré, une passe toutes les ${INTERVAL_MIN} min — journal ${logFile} — Ctrl+C pour arrêter`);
+record("started", { workerId, clubId, intervalMin: INTERVAL_MIN, maxJobsPerPass: MAX_JOBS_PER_PASS, relogin: RELOGIN, ffbbLocal: FFBB_LOCAL }, `worker FBI${FFBB_LOCAL ? " + FFBB" : ""} local démarré, une passe toutes les ${INTERVAL_MIN} min — journal ${logFile} — Ctrl+C pour arrêter`);
 for (;;) {
   try {
     await pass();
