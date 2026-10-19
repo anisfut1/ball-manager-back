@@ -3,6 +3,7 @@ import type { Database } from "../../db/types.js";
 import type { FfbbPublicProvider } from "./public-provider.js";
 import type { NormalizedCompetition, NormalizedPool, NormalizedTeamEngagement } from "./types.js";
 import { diffTrackedFields, mapNormalizedMatchToRow, shouldRequestEmarque } from "./mapping.js";
+import { FfbbApiError } from "./directus-client.js";
 import { logError, logInfo } from "../../logger.js";
 import { notifyMatchChange } from "../../modules/push/hooks.js";
 
@@ -21,6 +22,8 @@ export interface SyncFfbbResult {
     changesDetected: number;
     errors: number;
   };
+  /** L'API FFBB a refusé l'accès (HTTP 403) : le planificateur espace la prochaine tentative. */
+  blocked?: boolean;
 }
 
 /**
@@ -472,6 +475,7 @@ export async function syncFfbb(supabase: Client, provider: FfbbPublicProvider, c
 
     logError("Synchronisation FFBB en erreur", error, { clubId: club.id });
 
-    return { syncRunId: syncRun.id, status: "error", stats };
+    const blocked = error instanceof FfbbApiError && error.status === 403;
+    return { syncRunId: syncRun.id, status: "error", stats, ...(blocked ? { blocked } : {}) };
   }
 }

@@ -16,6 +16,7 @@ interface FakeState {
   acquireCalls: string[];
   releaseCalls: string[];
   nextSyncUpdates: string[];
+  nextSyncAt?: Record<string, string>;
 }
 
 function buildFakeSupabase(state: FakeState) {
@@ -32,9 +33,10 @@ function buildFakeSupabase(state: FakeState) {
               }),
             }),
           }),
-          update: () => ({
+          update: (patch: { ffbb_next_sync_at: string }) => ({
             eq: (_col: string, id: string) => {
               state.nextSyncUpdates.push(id);
+              state.nextSyncAt = { ...state.nextSyncAt, [id]: patch.ffbb_next_sync_at };
               return Promise.resolve({ error: null });
             },
           }),
@@ -108,6 +110,29 @@ describe("syncAllDueClubs", () => {
     expect(result).toEqual({ clubsDue: 2, clubsSynced: 1, clubsSkippedLocked: 0, clubsFailed: 1 });
     // Le verrou du club en échec est bien libéré (pas de fuite de verrou).
     expect(state.releaseCalls.sort()).toEqual(["club-a", "club-b"]);
+  });
+
+  it("espace la tentative suivante quand l'API FFBB refuse l'accès (403)", async () => {
+    mockSyncFfbb
+      .mockResolvedValueOnce({ syncRunId: "run-1", status: "error", stats: {}, blocked: true })
+      .mockResolvedValueOnce({ syncRunId: "run-2", status: "error", stats: {} });
+    const state: FakeState = {
+      dueClubs: [
+        { id: "club-a", ffbb_club_id: "AAA0000001" },
+        { id: "club-b", ffbb_club_id: "BBB0000002" },
+      ],
+      locksHeld: new Set(),
+      acquireCalls: [],
+      releaseCalls: [],
+      nextSyncUpdates: [],
+    };
+    const before = Date.now();
+
+    await syncAllDueClubs(buildFakeSupabase(state), {} as never);
+
+    const delayMinutes = (id: string) => (Date.parse(state.nextSyncAt![id]!) - before) / 60_000;
+    expect(delayMinutes("club-a")).toBeGreaterThanOrEqual(359);
+    expect(delayMinutes("club-b")).toBeLessThan(16);
   });
 
   it("ignore un club déjà verrouillé (déclenchement manuel admin en cours) sans toucher aux autres", async () => {

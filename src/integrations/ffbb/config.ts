@@ -45,6 +45,14 @@ export const FFBB_USER_AGENT = "okhttp/4.12.0";
 export const FFBB_SYNC_INTERVAL_MINUTES = 15;
 
 /**
+ * Pause après un refus de l'API FFBB (HTTP 403, page « Forbidden » d'un
+ * pare-feu devant api.ffbb.app, constaté à partir du 2026-10-17) : réessayer
+ * toutes les 15 min compte comme un comportement abusif et prolonge le
+ * blocage. On attend donc plusieurs heures avant la tentative suivante.
+ */
+export const FFBB_BLOCKED_RETRY_MINUTES = 360;
+
+/**
  * Nombre maximal de clubs traités par exécution du cron (§25/§49 du brief
  * SaaS) : évite qu'un tick de cron devienne interminable à grande échelle.
  * Les clubs non traités restent dus et seront pris au tick suivant.
