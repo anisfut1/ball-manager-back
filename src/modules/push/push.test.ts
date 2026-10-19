@@ -174,6 +174,24 @@ describe("destinataires", () => {
   });
 });
 
+describe("worker local (PUSH_QUEUE_ONLY)", () => {
+  afterEach(() => {
+    delete process.env.PUSH_QUEUE_ONLY;
+  });
+
+  it("met en file sans rien envoyer ; le cron Vercel envoie ensuite", async () => {
+    await device(["token-lina-0000"], DEVICE_1);
+    process.env.PUSH_QUEUE_ONLY = "1";
+    await convocation([LINA]);
+    expect(apns.sent).toHaveLength(0);
+    expect(state.notificationOutbox[0]).toMatchObject({ status: "pending", attempts: 0 });
+
+    delete process.env.PUSH_QUEUE_ONLY;
+    expect(await processOutbox(db(), { now: new Date(Date.now() + 1000) })).toMatchObject({ sent: 1 });
+    expect(apns.sent).toHaveLength(1);
+  });
+});
+
 describe("échecs APNs", () => {
   it("jeton invalide (410 / Unregistered) : révoqué, jamais réessayé", async () => {
     await device(["token-lina-0000"], DEVICE_1);

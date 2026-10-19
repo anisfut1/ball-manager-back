@@ -162,17 +162,28 @@ interface OutboxRow {
 const OUTBOX_COLUMNS = "id, club_id, kind, dedupe_key, licencie_ids, title, body, path, status, attempts, created_at";
 
 /**
+ * Mise en file sans envoi (2026-10-19) : le worker local du club (synchro
+ * FFBB) n'a pas les clés APNs, qui restent sur Vercel. Avec
+ * `PUSH_QUEUE_ONLY=1`, la notification est écrite dans la file et c'est le
+ * cron Vercel `/internal/cron/push` qui l'envoie.
+ */
+function queueOnly(): boolean {
+  return process.env.PUSH_QUEUE_ONLY === "1";
+}
+
+/**
  * Met une notification en file puis tente l'envoi tout de suite (le cron
  * `/internal/cron/push` reprend ce qui a échoué). Ne fait JAMAIS échouer
  * l'action qui l'appelle (convocation, annulation…) : erreurs journalisées.
- * Push non configuré (pas de clé APNs) : rien n'est écrit.
+ * Push non configuré (pas de clé APNs) : rien n'est écrit, sauf en mode
+ * « file seulement » (worker local), où l'envoi est laissé à Vercel.
  */
 export async function notify(db: DbClient, input: NotificationInput): Promise<void> {
   try {
     const ids = [...new Set(input.licencieIds)];
     if (ids.length === 0) return;
-    const sender = senderFactory();
-    if (!sender) return;
+    const sender = queueOnly() ? null : senderFactory();
+    if (!sender && !queueOnly()) return;
     try {
       const { data: club } = await db.from("clubs").select("id, slug").eq("id", input.clubId).maybeSingle();
       if (!club) return;
@@ -183,11 +194,12 @@ export async function notify(db: DbClient, input: NotificationInput): Promise<vo
           { onConflict: "dedupe_key", ignoreDuplicates: true },
         )
         .select(OUTBOX_COLUMNS);
+      if (!sender) return;
       for (const row of (data ?? []) as OutboxRow[]) {
         if (row.status === "pending" && row.attempts === 0) await deliver(db, sender, row);
       }
     } finally {
-      sender.close();
+      sender?.close();
     }
   } catch (error) {
     logError("Notification push non mise en file", error);
