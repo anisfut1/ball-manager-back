@@ -96,3 +96,29 @@ export function detectTeamConflicts(candidates: TeamConflictCandidate[]): VenueC
     (a, b) => a.teamId === b.teamId && parisDay(a.matchDatetime) === parisDay(b.matchDatetime),
   );
 }
+
+/**
+ * Regroupe les conflits par rencontre en GROUPES de rencontres liées (A↔B,
+ * B↔C → {A, B, C}) : une seule anomalie par conflit, qui montre toutes les
+ * rencontres concernées (retour du club, 2026-10-19 : « avoir les 2
+ * rencontres, afin de savoir les 2 coachs à contacter »).
+ */
+export function groupConflicts(results: readonly VenueConflictResult[]): string[][] {
+  const parent = new Map<string, string>();
+  const find = (id: string): string => {
+    const p = parent.get(id) ?? id;
+    if (p === id) return id;
+    const root = find(p);
+    parent.set(id, root);
+    return root;
+  };
+  for (const r of results) {
+    for (const other of r.conflictingMatchIds) parent.set(find(other), find(r.matchId));
+  }
+  const groups = new Map<string, string[]>();
+  for (const id of new Set(results.flatMap((r) => [r.matchId, ...r.conflictingMatchIds]))) {
+    const root = find(id);
+    groups.set(root, [...(groups.get(root) ?? []), id]);
+  }
+  return [...groups.values()].map((ids) => ids.sort());
+}

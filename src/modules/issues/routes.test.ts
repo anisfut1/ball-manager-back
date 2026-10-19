@@ -327,10 +327,11 @@ describe("GET /:clubId/issues", () => {
     const res = await request(`/${CLUB_A.id}/issues`);
     const body = await res.json();
 
+    // Une seule anomalie par conflit, qui montre les DEUX rencontres (les deux coachs à contacter).
     const conflicts = body.issues.filter((i: { integration: string }) => i.integration === "scheduling");
-    expect(conflicts).toHaveLength(2);
-    expect(conflicts.map((c: { matchId: string }) => c.matchId).sort()).toEqual(["match-u11", "match-u9"]);
+    expect(conflicts).toHaveLength(1);
     expect(conflicts[0]).toMatchObject({ type: "venue_time_conflict", severity: "error", technicalCode: "VENUE_TIME_CONFLICT" });
+    expect(conflicts[0].relatedMatches.map((m: { matchId: string }) => m.matchId).sort()).toEqual(["match-u11", "match-u9"]);
   });
 
   it("n'inclut jamais une anomalie déjà résolue (resolved_at renseigné)", async () => {
@@ -362,10 +363,17 @@ describe("GET /:clubId/issues", () => {
       { ...base, id: "match-a", numero: "10", match_datetime: "2026-10-11T08:00:00.000Z", opponent_name: "A" },
       { ...base, id: "match-b", numero: "11", match_datetime: "2026-10-11T14:00:00.000Z", opponent_name: "B" },
     ];
+    state.teams = [{ id: "team-u13", club_id: CLUB_A.id, name: "U13 M" }];
+    state.licencies = [
+      { id: "lic-coach", club_id: CLUB_A.id, first_name: "Camille", last_name: "Coach", license_number: null, birth_date: null, email: null, phone: "0600000000", photo_url: null, active: true, public_coach: true, coached_team_ids: ["team-u13"] },
+      { id: "lic-autre", club_id: CLUB_A.id, first_name: "Pas", last_name: "Coach", license_number: null, birth_date: null, email: null, phone: null, photo_url: null, active: true, public_coach: false, coached_team_ids: ["team-u13"] },
+    ];
 
     const body = await (await request(`/${CLUB_A.id}/issues`)).json();
     const team = body.issues.filter((i: { type: string }) => i.type === "team_double_booking");
-    expect(team.map((i: { matchId: string }) => i.matchId).sort()).toEqual(["match-a", "match-b"]);
+    expect(team).toHaveLength(1);
+    expect(team[0].relatedMatches.map((m: { matchId: string }) => m.matchId)).toEqual(["match-a", "match-b"]);
+    expect(team[0].relatedMatches[0]).toMatchObject({ teamName: "U13 M", coaches: [{ name: "Camille Coach", phone: "0600000000" }] });
   });
 
   it("retire une anomalie de la liste (bouton « Retirer »), sans toucher aux autres", async () => {
@@ -373,6 +381,8 @@ describe("GET /:clubId/issues", () => {
     state.matches = [
       { ...base, id: "match-a", numero: "1", match_datetime: "2026-10-11T09:00:00.000Z", opponent_name: "A" },
       { ...base, id: "match-b", numero: "2", match_datetime: "2026-10-11T09:30:00.000Z", opponent_name: "B" },
+      { ...base, id: "match-c", numero: "3", match_datetime: "2026-10-18T09:00:00.000Z", opponent_name: "C" },
+      { ...base, id: "match-d", numero: "4", match_datetime: "2026-10-18T09:30:00.000Z", opponent_name: "D" },
     ];
 
     const before = await (await request(`/${CLUB_A.id}/issues`)).json();

@@ -6,7 +6,8 @@ import { z } from "../../contracts/zod.js";
 import type { IssueDto } from "../../contracts/issues.js";
 import type { QualityWarningDto } from "../../contracts/emarque.js";
 import { currentSeasonStart } from "../../season.js";
-import { detectTeamConflicts, detectVenueConflicts, MATCH_SLOT_MINUTES } from "./venue-conflicts.js";
+import { detectTeamConflicts, detectVenueConflicts, groupConflicts, MATCH_SLOT_MINUTES } from "./venue-conflicts.js";
+import { hasRole } from "../../tenancy/roles.js";
 
 export const issuesRouter = new Hono<AppEnv>();
 
@@ -145,6 +146,7 @@ issuesRouter.get("/", async (c) => {
       message: meta.message,
       technicalCode: meta.technicalCode,
       qualityWarnings,
+      relatedMatches: [],
       createdAt: latestImport?.created_at ?? null,
       resolvedAt: null,
     };
@@ -214,6 +216,7 @@ issuesRouter.get("/", async (c) => {
         message: meta.message,
         technicalCode: meta.technicalCode,
         qualityWarnings: [],
+        relatedMatches: [],
         createdAt: d.detected_at,
         resolvedAt: d.auto_corrected_at,
       };
@@ -237,41 +240,69 @@ issuesRouter.get("/", async (c) => {
   );
   const matchById = new Map(datedMatches.map((m) => [m.id, m]));
 
-  const toConflictIssue = (
-    conflict: { matchId: string; conflictingMatchIds: string[]; conflictingLabel: string },
-    kind: "venue" | "team",
-  ): IssueDto => {
-    const match = matchById.get(conflict.matchId);
+  // Équipes et coachs des rencontres en conflit : le club doit savoir qui
+  // contacter (retour du club, 2026-10-19). Téléphone réservé aux admins.
+  const canSeePhones = hasRole(c.get("club").roles, "club_admin");
+  const [{ data: teams }, { data: coachRows }] = await Promise.all([
+    supabase.from("teams").select("id, name").eq("club_id", club.id),
+    supabase.from("licencies").select("first_name, last_name, phone, coached_team_ids, public_coach, active").eq("club_id", club.id).eq("public_coach", true),
+  ]);
+  const teamNameById = new Map((teams ?? []).map((t) => [t.id, t.name]));
+  const coachesFor = (teamId: string | null) =>
+    teamId
+      ? (coachRows ?? [])
+          .filter((l) => l.active && (l.coached_team_ids ?? []).includes(teamId))
+          .map((l) => ({ name: `${l.first_name} ${l.last_name}`.trim(), phone: canSeePhones ? (l.phone ?? null) : null }))
+      : [];
+
+  const toConflictIssue = (matchIds: string[], kind: "venue" | "team"): IssueDto => {
+    const related = matchIds
+      .map((id) => matchById.get(id))
+      .filter((m): m is NonNullable<typeof m> => Boolean(m))
+      .sort((a, b) => a.match_datetime.localeCompare(b.match_datetime));
+    const first = related[0];
     return {
-      key: `${kind}:${conflict.matchId}:${match?.match_datetime ?? ""}:${[...conflict.conflictingMatchIds].sort().join(",")}`,
-      matchId: conflict.matchId,
-      numero: match?.numero ?? null,
-      opponentName: match?.opponent_name ?? null,
-      matchDatetime: match?.match_datetime ?? null,
+      key: `${kind}:${related.map((m) => `${m.id}@${new Date(m.match_datetime).toISOString()}`).join(",")}`,
+      matchId: first?.id ?? null,
+      numero: first?.numero ?? null,
+      opponentName: first?.opponent_name ?? null,
+      matchDatetime: first?.match_datetime ?? null,
       integration: "scheduling",
       type: kind === "venue" ? "venue_time_conflict" : "team_double_booking",
       severity: "error",
       status: "open",
       message:
         kind === "venue"
-          ? `Même salle, créneaux qui se chevauchent (moins de ${MATCH_SLOT_MINUTES} min d'écart) avec : ${conflict.conflictingLabel}.`
-          : `Cette équipe a un autre match le même jour : ${conflict.conflictingLabel}.`,
+          ? `${related.length} matchs à domicile dans la même salle à moins de ${MATCH_SLOT_MINUTES} min d'écart.`
+          : `La même équipe a ${related.length} matchs le même jour.`,
       technicalCode: kind === "venue" ? "VENUE_TIME_CONFLICT" : "TEAM_DOUBLE_BOOKING",
       qualityWarnings: [],
+      relatedMatches: related.map((m) => ({
+        matchId: m.id,
+        numero: m.numero,
+        teamName: m.team_id ? (teamNameById.get(m.team_id) ?? null) : null,
+        opponentName: m.opponent_name,
+        matchDatetime: m.match_datetime,
+        venueLabel: m.venue_raw_label,
+        isHome: m.is_home,
+        coaches: coachesFor(m.team_id),
+      })),
       createdAt: null,
       resolvedAt: null,
     };
   };
 
-  const venueConflictIssues = detectVenueConflicts(
-    datedMatches
-      .filter((m) => m.is_home)
-      .map((m) => ({ id: m.id, numero: m.numero, opponentName: m.opponent_name, matchDatetime: m.match_datetime, venueId: m.venue_id, venueRawLabel: m.venue_raw_label })),
-  ).map((c) => toConflictIssue(c, "venue"));
+  const venueConflictIssues = groupConflicts(
+    detectVenueConflicts(
+      datedMatches
+        .filter((m) => m.is_home)
+        .map((m) => ({ id: m.id, numero: m.numero, opponentName: m.opponent_name, matchDatetime: m.match_datetime, venueId: m.venue_id, venueRawLabel: m.venue_raw_label })),
+    ),
+  ).map((ids) => toConflictIssue(ids, "venue"));
 
-  const teamConflictIssues = detectTeamConflicts(
-    datedMatches.map((m) => ({ id: m.id, numero: m.numero, opponentName: m.opponent_name, matchDatetime: m.match_datetime, teamId: m.team_id })),
-  ).map((c) => toConflictIssue(c, "team"));
+  const teamConflictIssues = groupConflicts(
+    detectTeamConflicts(datedMatches.map((m) => ({ id: m.id, numero: m.numero, opponentName: m.opponent_name, matchDatetime: m.match_datetime, teamId: m.team_id }))),
+  ).map((ids) => toConflictIssue(ids, "team"));
 
   const { data: dismissals, error: dismissalsError } = await supabase.from("issue_dismissals").select("issue_key").eq("club_id", club.id);
   if (dismissalsError) throw new Error(`Lecture des anomalies retirées échouée : ${dismissalsError.message}`);
