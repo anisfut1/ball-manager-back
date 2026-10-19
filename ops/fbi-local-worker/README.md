@@ -47,6 +47,11 @@ synchronisation FFBB (matchs, scores, classements) :
 
 `FFBB_LOCAL=0` dans `.env.fbi-local` pour laisser FFBB à Vercel.
 
+Notifications « Match modifié / annulé » nées d'une synchro faite ici : le
+worker les met en file (`notification_outbox`) sans les envoyer ; c'est le
+cron Vercel `/internal/cron/push` qui les envoie (les clés APNs ne quittent
+pas Vercel). Délai : celui du cron (environ 40 min).
+
 ## Lancer
 
 ```bash

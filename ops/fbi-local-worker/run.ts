@@ -46,6 +46,9 @@ process.env.FBI_LOCAL_BROWSER = "1";
 // Requis par la validation de configuration de l'API, inutilisés ici.
 process.env.CRON_SECRET ||= "worker-local-non-utilise";
 process.env.FRONTEND_ORIGINS ||= "http://localhost";
+// Notifications (synchro FFBB : match déplacé/annulé) : mises en file ici,
+// envoyées par Vercel (cron /internal/cron/push), seul à avoir les clés APNs.
+process.env.PUSH_QUEUE_ONLY = "1";
 
 // Cadence (2026-10-07, après les premières passes : ~3 s de travail réel par
 // feuille, la pause de 20 s dominait) — même session, aucune connexion en plus.
