@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../../db/types.js";
 import type { FfbbPublicProvider } from "./public-provider.js";
-import { FFBB_SYNC_BATCH_SIZE, FFBB_SYNC_INTERVAL_MINUTES } from "./config.js";
+import { FFBB_BLOCKED_RETRY_MINUTES, FFBB_SYNC_BATCH_SIZE, FFBB_SYNC_INTERVAL_MINUTES } from "./config.js";
 import { syncFfbb } from "./sync.js";
 import { logError, logInfo } from "../../logger.js";
 
@@ -63,7 +63,7 @@ export async function syncAllDueClubs(supabase: Client, provider: FfbbPublicProv
 
       await supabase
         .from("clubs")
-        .update({ ffbb_next_sync_at: new Date(Date.now() + FFBB_SYNC_INTERVAL_MINUTES * 60_000).toISOString() })
+        .update({ ffbb_next_sync_at: new Date(Date.now() + (syncResult.blocked ? FFBB_BLOCKED_RETRY_MINUTES : FFBB_SYNC_INTERVAL_MINUTES) * 60_000).toISOString() })
         .eq("id", club.id);
 
       if (syncResult.status === "error") result.clubsFailed += 1;
