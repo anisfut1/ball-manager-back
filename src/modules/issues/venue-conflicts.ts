@@ -1,18 +1,20 @@
 /**
- * Détection de conflits horaire/lieu (demande du club, 2026-09-25) : "faut
- * voir si ya pas des matchs prévus à la même heure au même endroit, genre
- * 2 équipes qui jouent le dimanche à 11h à Clavel" — deux rencontres À
- * DOMICILE du club, même date/heure EXACTE, même salle : le club ne peut
- * matériellement pas faire jouer les deux en même temps au même endroit.
+ * Conflits de planning (demande du club, 2026-09-25 puis 2026-10-19 :
+ * « surtout les matchs sur même créneau même salle ») :
  *
- * Scope volontairement restreint aux rencontres À DOMICILE (`isHome`) :
- * seules celles-là occupent une salle DU CLUB — deux rencontres à
- * l'extérieur au même horaire ne sont jamais un problème pour le club lui-
- * même. Comparaison sur l'horaire EXACT (pas de tolérance devinée) et sur
- * `venueId` quand les deux rencontres en ont un (identité de salle la plus
- * fiable — résolue par la synchro FFBB), sinon sur `venueRawLabel` normalisé
- * (texte brut FFBB, toujours présent même sans résolution de salle).
+ * - **Salle** : deux rencontres À DOMICILE dans la même salle dont les
+ *   créneaux se chevauchent (début à moins de `MATCH_SLOT_MINUTES` l'un de
+ *   l'autre, pas seulement à l'horaire exact : 11h et 12h à Clavel ne
+ *   tiennent pas non plus). Seules les rencontres à domicile occupent une
+ *   salle DU CLUB. Salle comparée sur `venueId` quand les deux en ont un
+ *   (identité résolue par la synchro FFBB), sinon sur `venueRawLabel`
+ *   normalisé.
+ * - **Équipe** : une même équipe programmée deux fois le même jour (heure de
+ *   Paris), domicile ou extérieur — typiquement après une dérogation.
  */
+
+/** Durée d'occupation de la salle retenue pour un match (échauffement compris). */
+export const MATCH_SLOT_MINUTES = 90;
 
 export interface VenueConflictCandidate {
   id: string;
@@ -35,39 +37,53 @@ function venueKey(m: VenueConflictCandidate): string | null {
   return null;
 }
 
+function label(m: { numero: string | null; opponentName: string | null; matchDatetime: string }): string {
+  const time = new Date(m.matchDatetime).toLocaleTimeString("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" });
+  return `n°${m.numero ?? "?"} vs ${m.opponentName ?? "?"} à ${time}`;
+}
+
+/** Pour chaque élément, les autres éléments avec lesquels il est en conflit (relation symétrique). */
+function pairConflicts<T extends { id: string; numero: string | null; opponentName: string | null; matchDatetime: string }>(
+  items: readonly T[],
+  inConflict: (a: T, b: T) => boolean,
+): VenueConflictResult[] {
+  const results: VenueConflictResult[] = [];
+  for (const match of items) {
+    const others = items.filter((other) => other.id !== match.id && inConflict(match, other));
+    if (others.length === 0) continue;
+    results.push({ matchId: match.id, conflictingMatchIds: others.map((o) => o.id), conflictingLabel: others.map(label).join(", ") });
+  }
+  return results;
+}
+
 /**
- * Fonction PURE : `candidates` doit déjà être filtré par l'appelant (à
- * domicile, saison en cours, date/heure connue — voir modules/issues/routes.ts).
- * Renvoie une entrée PAR rencontre impliquée dans un conflit (une rencontre
- * peut apparaître dans plusieurs conflits si elle en chevauche plusieurs —
- * cas limite non exclu, mais chaque entrée reste correcte individuellement).
+ * Fonction PURE : `candidates` déjà filtrés par l'appelant (à domicile,
+ * saison en cours, date/heure connue — voir modules/issues/routes.ts).
  */
 export function detectVenueConflicts(candidates: VenueConflictCandidate[]): VenueConflictResult[] {
-  const groups = new Map<string, VenueConflictCandidate[]>();
+  const slotMs = MATCH_SLOT_MINUTES * 60_000;
+  return pairConflicts(
+    candidates.filter((c) => venueKey(c) !== null),
+    (a, b) => venueKey(a) === venueKey(b) && Math.abs(new Date(a.matchDatetime).getTime() - new Date(b.matchDatetime).getTime()) < slotMs,
+  );
+}
 
-  for (const candidate of candidates) {
-    const key = venueKey(candidate);
-    if (!key) continue;
+export interface TeamConflictCandidate {
+  id: string;
+  numero: string | null;
+  opponentName: string | null;
+  matchDatetime: string;
+  teamId: string | null;
+}
 
-    const groupKey = `${candidate.matchDatetime}::${key}`;
-    const bucket = groups.get(groupKey) ?? [];
-    bucket.push(candidate);
-    groups.set(groupKey, bucket);
-  }
+function parisDay(iso: string): string {
+  return new Date(iso).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" });
+}
 
-  const results: VenueConflictResult[] = [];
-  for (const bucket of groups.values()) {
-    if (bucket.length < 2) continue;
-
-    for (const match of bucket) {
-      const others = bucket.filter((other) => other.id !== match.id);
-      results.push({
-        matchId: match.id,
-        conflictingMatchIds: others.map((other) => other.id),
-        conflictingLabel: others.map((other) => `n°${other.numero ?? "?"} vs ${other.opponentName ?? "?"}`).join(", "),
-      });
-    }
-  }
-
-  return results;
+/** Fonction PURE : même équipe, deux rencontres le même jour (heure de Paris). */
+export function detectTeamConflicts(candidates: TeamConflictCandidate[]): VenueConflictResult[] {
+  return pairConflicts(
+    candidates.filter((c) => c.teamId),
+    (a, b) => a.teamId === b.teamId && parisDay(a.matchDatetime) === parisDay(b.matchDatetime),
+  );
 }

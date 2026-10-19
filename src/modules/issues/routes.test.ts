@@ -140,7 +140,7 @@ describe("GET /:clubId/issues", () => {
     expect(body.issues[0].message).toContain("27/09/2026 15:00");
   });
 
-  it("renvoie une anomalie missing_in_ffbb SANS match_id (rencontre vue sur FBI, absente de notre calendrier FFBB)", async () => {
+  it("n'affiche plus les rencontres vues d'un seul côté FBI/FFBB (retour du club : « elles servent à rien »)", async () => {
     state.fbiScheduleDiscrepancies = [
       {
         id: "disc-2",
@@ -161,15 +161,7 @@ describe("GET /:clubId/issues", () => {
     const res = await request(`/${CLUB_A.id}/issues`);
     const body = await res.json();
 
-    expect(body.issues).toHaveLength(1);
-    expect(body.issues[0]).toMatchObject({
-      matchId: null,
-      opponentName: "SC Sète – Agde",
-      integration: "fbi_schedule",
-      type: "fbi_schedule_missing_in_ffbb",
-      severity: "error",
-      technicalCode: "FBI_SCHEDULE_MISSING_IN_FFBB",
-    });
+    expect(body.issues).toEqual([]);
   });
 
   it("affiche une anomalie mismatch récemment corrigée automatiquement (FBI l'emporte sur FFBB, demande du club 2026-09-27), au passé et status auto_corrected", async () => {
@@ -362,5 +354,35 @@ describe("GET /:clubId/issues", () => {
     const res = await request(`/${CLUB_A.id}/issues`);
     const body = await res.json();
     expect(body.issues).toEqual([]);
+  });
+
+  it("détecte une même équipe programmée deux fois le même jour", async () => {
+    const base = { club_id: CLUB_A.id, journee: null, is_home: false, venue_raw_label: null, score_home: null, score_away: null, status: "scheduled", emarque_status: "not_applicable", team_id: "team-u13" };
+    state.matches = [
+      { ...base, id: "match-a", numero: "10", match_datetime: "2026-10-11T08:00:00.000Z", opponent_name: "A" },
+      { ...base, id: "match-b", numero: "11", match_datetime: "2026-10-11T14:00:00.000Z", opponent_name: "B" },
+    ];
+
+    const body = await (await request(`/${CLUB_A.id}/issues`)).json();
+    const team = body.issues.filter((i: { type: string }) => i.type === "team_double_booking");
+    expect(team.map((i: { matchId: string }) => i.matchId).sort()).toEqual(["match-a", "match-b"]);
+  });
+
+  it("retire une anomalie de la liste (bouton « Retirer »), sans toucher aux autres", async () => {
+    const base = { club_id: CLUB_A.id, journee: null, is_home: true, venue_raw_label: "GYMNASE CLAVEL", score_home: null, score_away: null, status: "scheduled", emarque_status: "not_applicable", team_id: null };
+    state.matches = [
+      { ...base, id: "match-a", numero: "1", match_datetime: "2026-10-11T09:00:00.000Z", opponent_name: "A" },
+      { ...base, id: "match-b", numero: "2", match_datetime: "2026-10-11T09:30:00.000Z", opponent_name: "B" },
+    ];
+
+    const before = await (await request(`/${CLUB_A.id}/issues`)).json();
+    expect(before.issues).toHaveLength(2);
+
+    const res = await request(`/${CLUB_A.id}/issues/dismiss`, { method: "POST", body: JSON.stringify({ key: before.issues[0].key }) });
+    expect(res.status).toBe(200);
+
+    const after = await (await request(`/${CLUB_A.id}/issues`)).json();
+    expect(after.issues).toHaveLength(1);
+    expect(after.issues[0].key).toBe(before.issues[1].key);
   });
 });

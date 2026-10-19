@@ -20,6 +20,8 @@ import { QualityWarningDtoSchema } from "./emarque.js";
  */
 export const IssueDtoSchema = z
   .object({
+    /** Identifiant stable de l'anomalie ET de son état (sert au bouton « Retirer »). */
+    key: z.string(),
     matchId: z.string().uuid().nullable(),
     numero: z.string().nullable(),
     opponentName: z.string().nullable(),
@@ -32,6 +34,7 @@ export const IssueDtoSchema = z
       "fbi_schedule_missing_in_ffbb",
       "fbi_schedule_missing_in_fbi",
       "venue_time_conflict",
+      "team_double_booking",
     ]),
     severity: z.enum(["warning", "error"]),
     /**
