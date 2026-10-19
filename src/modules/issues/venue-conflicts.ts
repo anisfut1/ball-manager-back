@@ -43,12 +43,13 @@ function label(m: { numero: string | null; opponentName: string | null; matchDat
 }
 
 /**
- * Même rencontre présente deux fois côté FFBB (deux identifiants FFBB, même
- * numéro, même adversaire, même horaire — constaté en U11-2 le 2026-10-19) :
- * un doublon de données, jamais un conflit de planning.
+ * Même numéro de rencontre au même horaire = un PLATEAU (U9/U11 : toutes les
+ * équipes du plateau jouent le même jour dans la même salle, sous un seul
+ * numéro — retour du club, 2026-10-19 : « c'est des plateaux, c'est normal »)
+ * ou un doublon FFBB d'une même rencontre. Jamais un conflit de planning.
  */
-function isSameFixture(a: { numero: string | null; opponentName: string | null; matchDatetime: string }, b: typeof a): boolean {
-  return a.numero !== null && a.numero === b.numero && a.opponentName === b.opponentName && new Date(a.matchDatetime).getTime() === new Date(b.matchDatetime).getTime();
+function isSameFixture(a: { numero: string | null; matchDatetime: string }, b: typeof a): boolean {
+  return a.numero !== null && a.numero === b.numero && new Date(a.matchDatetime).getTime() === new Date(b.matchDatetime).getTime();
 }
 
 /** Pour chaque élément, les autres éléments avec lesquels il est en conflit (relation symétrique). */
@@ -95,4 +96,30 @@ export function detectTeamConflicts(candidates: TeamConflictCandidate[]): VenueC
     candidates.filter((c) => c.teamId),
     (a, b) => a.teamId === b.teamId && parisDay(a.matchDatetime) === parisDay(b.matchDatetime),
   );
+}
+
+/**
+ * Regroupe les conflits par rencontre en GROUPES de rencontres liées (A↔B,
+ * B↔C → {A, B, C}) : une seule anomalie par conflit, qui montre toutes les
+ * rencontres concernées (retour du club, 2026-10-19 : « avoir les 2
+ * rencontres, afin de savoir les 2 coachs à contacter »).
+ */
+export function groupConflicts(results: readonly VenueConflictResult[]): string[][] {
+  const parent = new Map<string, string>();
+  const find = (id: string): string => {
+    const p = parent.get(id) ?? id;
+    if (p === id) return id;
+    const root = find(p);
+    parent.set(id, root);
+    return root;
+  };
+  for (const r of results) {
+    for (const other of r.conflictingMatchIds) parent.set(find(other), find(r.matchId));
+  }
+  const groups = new Map<string, string[]>();
+  for (const id of new Set(results.flatMap((r) => [r.matchId, ...r.conflictingMatchIds]))) {
+    const root = find(id);
+    groups.set(root, [...(groups.get(root) ?? []), id]);
+  }
+  return [...groups.values()].map((ids) => ids.sort());
 }

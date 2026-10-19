@@ -48,6 +48,19 @@ export const IssueDtoSchema = z
     message: z.string(),
     technicalCode: z.string(),
     qualityWarnings: z.array(QualityWarningDtoSchema),
+    /** Conflits de planning : TOUTES les rencontres concernées, avec équipe et coachs à contacter (téléphone réservé aux admins). Vide sinon. */
+    relatedMatches: z.array(
+      z.object({
+        matchId: z.string(),
+        numero: z.string().nullable(),
+        teamName: z.string().nullable(),
+        opponentName: z.string().nullable(),
+        matchDatetime: z.string(),
+        venueLabel: z.string().nullable(),
+        isHome: z.boolean().nullable(),
+        coaches: z.array(z.object({ name: z.string(), phone: z.string().nullable() })),
+      }),
+    ),
     createdAt: z.string().nullable(),
     resolvedAt: z.string().nullable(),
   })
