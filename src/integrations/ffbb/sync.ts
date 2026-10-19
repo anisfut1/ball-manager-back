@@ -6,6 +6,7 @@ import { diffTrackedFields, mapNormalizedMatchToRow, shouldRequestEmarque } from
 import { FfbbApiError } from "./directus-client.js";
 import { logError, logInfo } from "../../logger.js";
 import { notifyMatchChange } from "../../modules/push/hooks.js";
+import { applyFbiPrecedence, loadFbiCorrections } from "./fbi-precedence.js";
 
 type Client = SupabaseClient<Database>;
 
@@ -377,13 +378,15 @@ export async function syncFfbb(supabase: Client, provider: FfbbPublicProvider, c
     );
     stats.engagementsUpserted = teamIdByEngagementFfbbId.size;
 
+    const fbiCorrectionsByMatchId = await loadFbiCorrections(supabase, club.id);
+
     const homeVenues = new Map<string, { name: string | null; address: string | null }>();
     for (const match of snapshot.matches) {
       try {
         const venueId = await upsertVenue(supabase, match.venue?.ffbbId ?? null, match.venue?.name ?? null, match.venue?.address ?? null);
         if (match.isHome && venueId) homeVenues.set(venueId, { name: match.venue?.name ?? null, address: match.venue?.address ?? null });
 
-        const row = mapNormalizedMatchToRow(match, {
+        const ffbbRow = mapNormalizedMatchToRow(match, {
           clubId: club.id,
           teamId: teamIdByEngagementFfbbId.get(match.ourEngagementFfbbId) ?? null,
           competitionId: match.competitionFfbbId ? (competitionIdByFfbbId.get(match.competitionFfbbId) ?? null) : null,
@@ -398,6 +401,7 @@ export async function syncFfbb(supabase: Client, provider: FfbbPublicProvider, c
           .eq("ffbb_match_id", match.ffbbId)
           .maybeSingle();
 
+        const row = existing ? applyFbiPrecedence(ffbbRow, existing, fbiCorrectionsByMatchId.get(existing.id) ?? []) : ffbbRow;
         const diffs = diffTrackedFields(existing, row);
         const emarqueTransition = shouldRequestEmarque(existing?.status, row.status);
 

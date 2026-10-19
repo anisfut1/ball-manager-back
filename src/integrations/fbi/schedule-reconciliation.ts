@@ -188,6 +188,12 @@ function ourDateTimeParts(matchDatetime: string | null): { date: string; time: s
   return { date: `${get("day")}/${get("month")}/${get("year")}`, time: `${get("hour")}:${get("minute")}` };
 }
 
+/** "26/09/2026 11:00" (heure de Paris) : le format de `ffbb_value`/`fbi_value` d'un écart de date/heure. */
+export function formatParisDateTime(matchDatetime: string): string | null {
+  const parts = ourDateTimeParts(matchDatetime);
+  return parts ? `${parts.date} ${parts.time}` : null;
+}
+
 /**
  * Fonction PURE (aucune IO) : compare le listing FBI d'un club (les DEUX
  * passes "non joué" coché/décoché, voir `BrowserFbiClient.fetchScheduleRows`)
