@@ -81,6 +81,19 @@ function toComparableString(value: unknown): string | null {
 }
 
 /**
+ * Postgres relit `match_datetime` en "2026-04-19T09:00:00+00:00", le mapping
+ * FFBB l'écrit en "2026-04-19T09:00:00.000Z" : même instant, chaînes
+ * différentes. Comparé en ISO normalisé, sinon chaque synchro voyait tous les
+ * matchs "déplacés" (historique gonflé et notifications "Match modifié" à tort).
+ */
+function toComparableValue(field: TrackedMatchField, value: unknown): string | null {
+  const text = toComparableString(value);
+  if (field !== "match_datetime" || text === null) return text;
+  const time = new Date(text).getTime();
+  return Number.isNaN(time) ? text : new Date(time).toISOString();
+}
+
+/**
  * Compare une ligne existante (ou `null` si le match est nouveau) aux
  * nouvelles valeurs FFBB. Ne retourne que les champs suivis qui ont
  * réellement changé (jamais de diff sur un match nouvellement créé : ce
@@ -92,8 +105,8 @@ export function diffTrackedFields(existing: MatchRow | null, incoming: MatchInse
   const diffs: FieldDiff[] = [];
 
   for (const field of TRACKED_MATCH_FIELDS) {
-    const oldValue = toComparableString(existing[field]);
-    const newValue = toComparableString(incoming[field]);
+    const oldValue = toComparableValue(field, existing[field]);
+    const newValue = toComparableValue(field, incoming[field]);
 
     if (oldValue !== newValue) {
       diffs.push({ field, oldValue, newValue });

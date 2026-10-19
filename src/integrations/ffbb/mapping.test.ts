@@ -169,6 +169,20 @@ describe("diffTrackedFields", () => {
     expect(diffs).toEqual([{ field: "match_datetime", oldValue: "2025-09-27T19:00:00.000Z", newValue: "2025-10-04T19:00:00.000Z" }]);
   });
 
+  it("ne voit pas de changement d'horaire quand seul le format de date diffère (relu de Postgres)", () => {
+    const existing = buildExistingRow({ match_datetime: "2025-09-27T19:00:00+00:00" });
+    const incoming = mapNormalizedMatchToRow(buildNormalizedMatch({ matchDateTime: "2025-09-27T19:00:00.000Z" }), CONTEXT);
+
+    expect(diffTrackedFields(existing, incoming)).toEqual([]);
+  });
+
+  it("détecte un vrai changement d'horaire malgré des formats de date différents", () => {
+    const existing = buildExistingRow({ match_datetime: "2025-09-27T19:00:00+00:00" });
+    const incoming = mapNormalizedMatchToRow(buildNormalizedMatch({ matchDateTime: "2025-10-04T19:00:00.000Z" }), CONTEXT);
+
+    expect(diffTrackedFields(existing, incoming)).toEqual([{ field: "match_datetime", oldValue: "2025-09-27T19:00:00.000Z", newValue: "2025-10-04T19:00:00.000Z" }]);
+  });
+
   it("ignore les champs non suivis (ex: identifiants internes résolus) même s'ils changent", () => {
     const existing = buildExistingRow({ team_id: "team-1", venue_id: "venue-1" });
     const incoming = mapNormalizedMatchToRow(buildNormalizedMatch(), { ...CONTEXT, teamId: "team-2", venueId: "venue-2" });
