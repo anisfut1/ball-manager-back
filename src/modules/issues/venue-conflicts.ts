@@ -42,6 +42,15 @@ function label(m: { numero: string | null; opponentName: string | null; matchDat
   return `n°${m.numero ?? "?"} vs ${m.opponentName ?? "?"} à ${time}`;
 }
 
+/**
+ * Même rencontre présente deux fois côté FFBB (deux identifiants FFBB, même
+ * numéro, même adversaire, même horaire — constaté en U11-2 le 2026-10-19) :
+ * un doublon de données, jamais un conflit de planning.
+ */
+function isSameFixture(a: { numero: string | null; opponentName: string | null; matchDatetime: string }, b: typeof a): boolean {
+  return a.numero !== null && a.numero === b.numero && a.opponentName === b.opponentName && new Date(a.matchDatetime).getTime() === new Date(b.matchDatetime).getTime();
+}
+
 /** Pour chaque élément, les autres éléments avec lesquels il est en conflit (relation symétrique). */
 function pairConflicts<T extends { id: string; numero: string | null; opponentName: string | null; matchDatetime: string }>(
   items: readonly T[],
@@ -49,7 +58,7 @@ function pairConflicts<T extends { id: string; numero: string | null; opponentNa
 ): VenueConflictResult[] {
   const results: VenueConflictResult[] = [];
   for (const match of items) {
-    const others = items.filter((other) => other.id !== match.id && inConflict(match, other));
+    const others = items.filter((other) => other.id !== match.id && !isSameFixture(match, other) && inConflict(match, other));
     if (others.length === 0) continue;
     results.push({ matchId: match.id, conflictingMatchIds: others.map((o) => o.id), conflictingLabel: others.map(label).join(", ") });
   }

@@ -45,21 +45,21 @@ describe("detectVenueConflicts", () => {
 
   it("détecte deux créneaux qui se chevauchent dans la même salle (11h et 12h)", () => {
     const matchA = candidate({ id: "match-a", matchDatetime: "2026-10-11T09:00:00.000Z" });
-    const matchB = candidate({ id: "match-b", matchDatetime: "2026-10-11T10:00:00.000Z" });
+    const matchB = candidate({ id: "match-b", numero: "2", matchDatetime: "2026-10-11T10:00:00.000Z" });
 
     expect(detectVenueConflicts([matchA, matchB])).toHaveLength(2);
   });
 
   it("normalise la casse/les espaces de venueRawLabel avant comparaison", () => {
     const matchA = candidate({ id: "match-a", venueRawLabel: "  gymnase clavel  " });
-    const matchB = candidate({ id: "match-b", venueRawLabel: "GYMNASE CLAVEL" });
+    const matchB = candidate({ id: "match-b", numero: "2", venueRawLabel: "GYMNASE CLAVEL" });
 
     expect(detectVenueConflicts([matchA, matchB])).toHaveLength(2);
   });
 
   it("préfère venueId (identité de salle résolue) à venueRawLabel quand les deux sont présents", () => {
     const matchA = candidate({ id: "match-a", venueId: "venue-1", venueRawLabel: "GYMNASE A (LIBELLÉ BRUT)" });
-    const matchB = candidate({ id: "match-b", venueId: "venue-1", venueRawLabel: "GYMNASE A (AUTRE LIBELLÉ)" });
+    const matchB = candidate({ id: "match-b", numero: "2", venueId: "venue-1", venueRawLabel: "GYMNASE A (AUTRE LIBELLÉ)" });
 
     expect(detectVenueConflicts([matchA, matchB])).toHaveLength(2);
   });
@@ -105,3 +105,13 @@ describe("detectTeamConflicts", () => {
     ).toEqual([]);
   });
 });
+
+describe("doublons FFBB", () => {
+  it("ne signale pas une même rencontre présente deux fois côté FFBB (même numéro, adversaire, horaire)", () => {
+    const matchA = candidate({ id: "match-a", numero: "5356", opponentName: "FO PISCENOIS - 1" });
+    const matchB = candidate({ id: "match-b", numero: "5356", opponentName: "FO PISCENOIS - 1" });
+    expect(detectVenueConflicts([matchA, matchB])).toEqual([]);
+    expect(detectTeamConflicts([{ ...matchA, teamId: "t" }, { ...matchB, teamId: "t" }])).toEqual([]);
+  });
+});
+
