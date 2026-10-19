@@ -106,7 +106,14 @@ describe("detectTeamConflicts", () => {
   });
 });
 
-describe("doublons FFBB", () => {
+describe("plateaux et doublons FFBB", () => {
+  it("ne signale pas un plateau (même numéro, même horaire, adversaires différents)", () => {
+    const matchA = candidate({ id: "match-a", numero: "5225", opponentName: "AS CHEMINOTS BEZIERS BASKET - 1" });
+    const matchB = candidate({ id: "match-b", numero: "5225", opponentName: "ASSOCIATION SPORTIVE SERVIAN BASKET - 1" });
+    expect(detectVenueConflicts([matchA, matchB])).toEqual([]);
+    expect(detectTeamConflicts([{ ...matchA, teamId: "t" }, { ...matchB, teamId: "t" }])).toEqual([]);
+  });
+
   it("ne signale pas une même rencontre présente deux fois côté FFBB (même numéro, adversaire, horaire)", () => {
     const matchA = candidate({ id: "match-a", numero: "5356", opponentName: "FO PISCENOIS - 1" });
     const matchB = candidate({ id: "match-b", numero: "5356", opponentName: "FO PISCENOIS - 1" });

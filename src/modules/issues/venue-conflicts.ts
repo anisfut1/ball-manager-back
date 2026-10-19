@@ -43,12 +43,13 @@ function label(m: { numero: string | null; opponentName: string | null; matchDat
 }
 
 /**
- * Même rencontre présente deux fois côté FFBB (deux identifiants FFBB, même
- * numéro, même adversaire, même horaire — constaté en U11-2 le 2026-10-19) :
- * un doublon de données, jamais un conflit de planning.
+ * Même numéro de rencontre au même horaire = un PLATEAU (U9/U11 : toutes les
+ * équipes du plateau jouent le même jour dans la même salle, sous un seul
+ * numéro — retour du club, 2026-10-19 : « c'est des plateaux, c'est normal »)
+ * ou un doublon FFBB d'une même rencontre. Jamais un conflit de planning.
  */
-function isSameFixture(a: { numero: string | null; opponentName: string | null; matchDatetime: string }, b: typeof a): boolean {
-  return a.numero !== null && a.numero === b.numero && a.opponentName === b.opponentName && new Date(a.matchDatetime).getTime() === new Date(b.matchDatetime).getTime();
+function isSameFixture(a: { numero: string | null; matchDatetime: string }, b: typeof a): boolean {
+  return a.numero !== null && a.numero === b.numero && new Date(a.matchDatetime).getTime() === new Date(b.matchDatetime).getTime();
 }
 
 /** Pour chaque élément, les autres éléments avec lesquels il est en conflit (relation symétrique). */
