@@ -255,6 +255,18 @@ issuesRouter.get("/", async (c) => {
           .map((l) => ({ name: `${l.first_name} ${l.last_name}`.trim(), phone: canSeePhones ? (l.phone ?? null) : null }))
       : [];
 
+  type RelatedMatchRow = { id: string; numero: string | null; team_id: string | null; opponent_name: string | null; match_datetime: string; venue_raw_label: string | null; is_home: boolean | null };
+  const toRelated = (m: RelatedMatchRow): IssueDto["relatedMatches"][number] => ({
+    matchId: m.id,
+    numero: m.numero,
+    teamName: m.team_id ? (teamNameById.get(m.team_id) ?? null) : null,
+    opponentName: m.opponent_name,
+    matchDatetime: m.match_datetime,
+    venueLabel: m.venue_raw_label,
+    isHome: m.is_home,
+    coaches: coachesFor(m.team_id),
+  });
+
   const toConflictIssue = (matchIds: string[], kind: "venue" | "team"): IssueDto => {
     const related = matchIds
       .map((id) => matchById.get(id))
@@ -277,16 +289,7 @@ issuesRouter.get("/", async (c) => {
           : `La même équipe a ${related.length} matchs le même jour.`,
       technicalCode: kind === "venue" ? "VENUE_TIME_CONFLICT" : "TEAM_DOUBLE_BOOKING",
       qualityWarnings: [],
-      relatedMatches: related.map((m) => ({
-        matchId: m.id,
-        numero: m.numero,
-        teamName: m.team_id ? (teamNameById.get(m.team_id) ?? null) : null,
-        opponentName: m.opponent_name,
-        matchDatetime: m.match_datetime,
-        venueLabel: m.venue_raw_label,
-        isHome: m.is_home,
-        coaches: coachesFor(m.team_id),
-      })),
+      relatedMatches: related.map(toRelated),
       createdAt: null,
       resolvedAt: null,
     };
@@ -309,6 +312,20 @@ issuesRouter.get("/", async (c) => {
   const dismissed = new Set((dismissals ?? []).map((d) => d.issue_key));
 
   // Conflits de planning en tête : ce sont eux que le club veut voir d'abord.
+  // Écarts FBI et feuilles de match : la rencontre concernée avec son équipe,
+  // son adversaire et son horaire (retour du club, 2026-10-19 : « que je
+  // sache quelle équipe, contre qui et l'heure »).
+  const singleMatchIssues = [...emarqueIssues, ...fbiScheduleIssues];
+  const singleMatchIds = [...new Set(singleMatchIssues.map((i) => i.matchId).filter((id): id is string => Boolean(id)))];
+  const { data: singleMatches } = singleMatchIds.length
+    ? await supabase.from("matches").select("id, numero, team_id, opponent_name, match_datetime, venue_raw_label, is_home").in("id", singleMatchIds)
+    : { data: [] };
+  const singleMatchById = new Map((singleMatches ?? []).map((m) => [m.id, m]));
+  for (const issue of singleMatchIssues) {
+    const m = issue.matchId ? singleMatchById.get(issue.matchId) : undefined;
+    if (m?.match_datetime) issue.relatedMatches = [toRelated({ ...m, match_datetime: m.match_datetime })];
+  }
+
   const issues = [...venueConflictIssues, ...teamConflictIssues, ...emarqueIssues, ...fbiScheduleIssues].filter((issue) => !dismissed.has(issue.key));
   return c.json({ issues });
 });
