@@ -1,11 +1,9 @@
 import type { DbClient } from "../../db/client.js";
-import { badRequest, conflict, notFound } from "../../api-error.js";
+import { conflict, notFound } from "../../api-error.js";
 import { getFbiCredentials } from "../../integrations/fbi/credentials-store.js";
-import { BrowserFbiClient, type BrowserFbiSession } from "../../integrations/fbi/browser-client.js";
-import { launchServerlessBrowser } from "../../integrations/fbi/browser-launcher.js";
-import { classifyFbiLoginStatus, FbiError } from "../../integrations/fbi/errors.js";
-import { getEnv } from "../../config/env.js";
 import { logError, logInfo } from "../../logger.js";
+import type { SharedFbiSession } from "../../jobs/shared-session.js";
+import { localWorkerHoldsFbi, runOnLocalWorker, withVercelFbiSession } from "./fbi-write-routing.js";
 import { isDerogationActionRequired } from "./action-required.js";
 import { assertNoActiveFbiJob } from "./fbi-session-lock.js";
 import type { DerogationResponseDecision } from "../../integrations/fbi/types.js";
@@ -13,14 +11,6 @@ import type { DerogationResponseDecision } from "../../integrations/fbi/types.js
 export interface RespondToDerogationResult {
   outcome: "success" | "error" | "unknown";
   message: string | null;
-}
-
-async function recordLoginOutcome(supabase: DbClient, clubId: string, success: boolean, message: string | null): Promise<void> {
-  const now = new Date().toISOString();
-  await supabase.from("fbi_integration_status").upsert(
-    { club_id: clubId, configured: true, last_login_at: now, last_login_success: success, last_job_at: now, last_job_status: success ? "success" : "error", last_error: success ? null : message, updated_at: now },
-    { onConflict: "club_id" },
-  );
 }
 
 /**
@@ -42,11 +32,35 @@ async function recordLoginOutcome(supabase: DbClient, clubId: string, success: b
  * erreur, ou état indéterminé) avant de retourner — action réelle et
  * engageante envers un tiers, jamais silencieuse même en cas d'échec.
  */
-export async function respondToDerogationForClub(
-  supabase: DbClient,
-  params: { clubId: string; derogationCheckId: string; decision: DerogationResponseDecision; motifRefus: string | null; submittedBy: string | null },
-): Promise<RespondToDerogationResult> {
-  const { clubId, derogationCheckId, decision, motifRefus, submittedBy } = params;
+export interface RespondToDerogationParams {
+  clubId: string;
+  derogationCheckId: string;
+  decision: DerogationResponseDecision;
+  motifRefus: string | null;
+  submittedBy: string | null;
+}
+
+export async function respondToDerogationForClub(supabase: DbClient, params: RespondToDerogationParams): Promise<RespondToDerogationResult> {
+  const { clubId, derogationCheckId } = params;
+  const target = await loadRespondTarget(supabase, params);
+
+  const credentials = await getFbiCredentials(supabase, clubId);
+  if (!credentials) throw conflict("Configure d'abord un identifiant/mot de passe FBI avant de répondre à une dérogation.", "FBI_NOT_CONFIGURED");
+
+  // Poste du club connecté à FBI : c'est lui qui répond, dans sa session (voir `localWorkerHoldsFbi`).
+  if (await localWorkerHoldsFbi(supabase)) {
+    return runOnLocalWorker(supabase, { clubId, matchId: target.match.id, type: "respond_derogation", payload: { params } });
+  }
+
+  await assertNoActiveFbiJob(supabase, clubId);
+  return withVercelFbiSession(supabase, clubId, "Réponse à une dérogation", { derogationCheckId }, (shared) => respondToDerogationInSession(supabase, shared, params, target));
+}
+
+type RespondTarget = Awaited<ReturnType<typeof loadRespondTarget>>;
+
+/** Dérogation et match à jour, revalidés côté serveur (aussi au moment où le poste du club traite l'envoi). */
+async function loadRespondTarget(supabase: DbClient, params: RespondToDerogationParams) {
+  const { clubId, derogationCheckId } = params;
 
   const { data: check, error: checkError } = await supabase
     .from("fbi_derogation_checks")
@@ -77,98 +91,79 @@ export async function respondToDerogationForClub(
     );
   }
 
-  const credentials = await getFbiCredentials(supabase, clubId);
-  if (!credentials) throw conflict("Configure d'abord un identifiant/mot de passe FBI avant de répondre à une dérogation.", "FBI_NOT_CONFIGURED");
-
-  await assertNoActiveFbiJob(supabase, clubId);
-
   let division: string | null = null;
   if (match.competition_id) {
     const { data: competition } = await supabase.from("competitions").select("code").eq("id", match.competition_id).maybeSingle();
     division = competition?.code ?? null;
   }
+  return { check, match: { ...match, numero: match.numero as string }, division, idDerogation: check.id_derogation as string };
+}
 
-  const browser = await launchServerlessBrowser();
-  const client = new BrowserFbiClient({ baseUrl: getEnv().FBI_BASE_URL, browser });
-  let session: BrowserFbiSession;
+/** La réponse elle-même, dans une session FBI déjà ouverte (worker du poste du club, ou Vercel le temps de l'envoi). */
+export async function respondToDerogationInSession(supabase: DbClient, shared: SharedFbiSession, params: RespondToDerogationParams, target?: RespondTarget): Promise<RespondToDerogationResult> {
+  const { clubId, derogationCheckId, decision, motifRefus, submittedBy } = params;
+  const { client, session } = shared;
+  const { check, match, division, idDerogation } = target ?? (await loadRespondTarget(supabase, params));
 
-  try {
-    session = await client.login(credentials);
-    await recordLoginOutcome(supabase, clubId, true, null);
-  } catch (error) {
-    const status = classifyFbiLoginStatus(error);
-    const message = error instanceof FbiError ? error.message : "Connexion FBI impossible.";
-    await recordLoginOutcome(supabase, clubId, false, message);
-    logError("Réponse à une dérogation : connexion FBI échouée", error, { clubId, derogationCheckId, loginStatus: status });
-    await browser.close();
-    throw badRequest(`Connexion FBI impossible : ${message}`);
-  }
+  const result = await client.respondToDerogation(session, idDerogation, decision, motifRefus);
 
-  try {
-    const result = await client.respondToDerogation(session, check.id_derogation, decision, motifRefus);
+  await supabase.from("fbi_derogation_responses").insert({
+    club_id: clubId,
+    match_id: match.id,
+    fbi_row_key: check.fbi_row_key,
+    id_derogation: idDerogation,
+    decision,
+    motif_refus: decision === "refused" ? motifRefus : null,
+    submitted_by: submittedBy,
+    outcome: result.outcome,
+    fbi_message: result.outcome === "success" ? null : result.message,
+  });
 
-    await supabase.from("fbi_derogation_responses").insert({
-      club_id: clubId,
-      match_id: match.id,
-      fbi_row_key: check.fbi_row_key,
-      id_derogation: check.id_derogation,
-      decision,
-      motif_refus: decision === "refused" ? motifRefus : null,
-      submitted_by: submittedBy,
-      outcome: result.outcome,
-      fbi_message: result.outcome === "success" ? null : result.message,
-    });
+  logInfo("Réponse à une dérogation FBI", { clubId, derogationCheckId, decision, outcome: result.outcome });
 
-    logInfo("Réponse à une dérogation FBI", { clubId, derogationCheckId, decision, outcome: result.outcome });
-
-    if (result.outcome === "success") {
-      // Rafraîchit IMMÉDIATEMENT l'état connu depuis FBI (jamais deviné/
-      // simulé côté applicatif) — même session déjà authentifiée, même
-      // logique d'upsert que `processCheckDerogationJob` (voir sa doc).
-      try {
-        const refreshed = await client.fetchDerogationForMatch(session, match.numero, division);
-        if (refreshed) {
-          const now = new Date().toISOString();
-          const fbiRowKey = refreshed.idDerogation ?? check.fbi_row_key;
-          await supabase.from("fbi_derogation_checks").upsert(
-            {
-              club_id: clubId,
-              match_id: match.id,
-              fbi_row_key: fbiRowKey,
-              id_derogation: refreshed.idDerogation,
-              numero: refreshed.numero,
-              etat: refreshed.etat,
-              date_depot: refreshed.dateDepot,
-              date_derogation: refreshed.dateDerogation,
-              date_rencontre: refreshed.dateRencontre,
-              heure: refreshed.heure,
-              domicile: refreshed.domicile,
-              visiteur: refreshed.visiteur,
-              demandeur: refreshed.demandeur,
-              motif: refreshed.motif,
-              date_rencontre_demandee: refreshed.dateRencontreDemandee,
-              heure_demandee: refreshed.heureDemandee,
-              adversaire: refreshed.adversaire,
-              date_reponse: refreshed.dateReponse,
-              acceptation: refreshed.acceptation,
-              motif_refus: refreshed.motifRefus,
-              checked_at: now,
-              updated_at: now,
-            },
-            { onConflict: "club_id,fbi_row_key" },
-          );
-        }
-      } catch (error) {
-        // Best effort : la réponse a bien été enregistrée sur FBI (résultat
-        // déjà journalisé ci-dessus) — un échec de ce simple rafraîchissement
-        // ne doit jamais faire paraître la soumission elle-même en échec.
-        logError("Réponse à une dérogation FBI : rafraîchissement post-soumission échoué", error, { clubId, derogationCheckId });
+  if (result.outcome === "success") {
+    // Rafraîchit IMMÉDIATEMENT l'état connu depuis FBI (jamais deviné/
+    // simulé côté applicatif) — même session déjà authentifiée, même
+    // logique d'upsert que `processCheckDerogationJob` (voir sa doc).
+    try {
+      const refreshed = await client.fetchDerogationForMatch(session, match.numero, division);
+      if (refreshed) {
+        const now = new Date().toISOString();
+        const fbiRowKey = refreshed.idDerogation ?? check.fbi_row_key;
+        await supabase.from("fbi_derogation_checks").upsert(
+          {
+            club_id: clubId,
+            match_id: match.id,
+            fbi_row_key: fbiRowKey,
+            id_derogation: refreshed.idDerogation,
+            numero: refreshed.numero,
+            etat: refreshed.etat,
+            date_depot: refreshed.dateDepot,
+            date_derogation: refreshed.dateDerogation,
+            date_rencontre: refreshed.dateRencontre,
+            heure: refreshed.heure,
+            domicile: refreshed.domicile,
+            visiteur: refreshed.visiteur,
+            demandeur: refreshed.demandeur,
+            motif: refreshed.motif,
+            date_rencontre_demandee: refreshed.dateRencontreDemandee,
+            heure_demandee: refreshed.heureDemandee,
+            adversaire: refreshed.adversaire,
+            date_reponse: refreshed.dateReponse,
+            acceptation: refreshed.acceptation,
+            motif_refus: refreshed.motifRefus,
+            checked_at: now,
+            updated_at: now,
+          },
+          { onConflict: "club_id,fbi_row_key" },
+        );
       }
+    } catch (error) {
+      // Best effort : la réponse a bien été enregistrée sur FBI (résultat
+      // déjà journalisé ci-dessus) — un échec de ce simple rafraîchissement
+      // ne doit jamais faire paraître la soumission elle-même en échec.
+      logError("Réponse à une dérogation FBI : rafraîchissement post-soumission échoué", error, { clubId, derogationCheckId });
     }
-
-    return { outcome: result.outcome, message: result.outcome === "success" ? null : result.message };
-  } finally {
-    await client.closeSession(session);
-    await browser.close();
   }
+  return { outcome: result.outcome, message: result.outcome === "success" ? null : result.message };
 }

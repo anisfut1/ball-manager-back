@@ -489,24 +489,33 @@ export async function handleOfficial(ctx: Ctx, requestId: string, rawBody: unkno
   if (!canManageRequests(ctx.actor)) throw forbidden("L'envoi officiel est réservé au coordinateur.", "DEROGATION_FORBIDDEN");
   if (!canSubmitOfficial(ctx.actor, requestRef(row))) throw conflict("Prends d'abord la demande en charge (« Je m'en occupe ») avant l'envoi officiel.", "INVALID_TRANSITION");
 
-  const result = await createDerogationForClub(ctx.db, {
-    clubId: ctx.clubId,
-    matchId: row.match_id,
-    motif: body.data.motif,
-    modifierDate: body.data.modifierDate,
-    dateDerogation: body.data.dateDerogation ?? null,
-    modifierHoraire: body.data.modifierHoraire,
-    horaire: body.data.horaire ?? null,
-    inverserRencontre: body.data.inverserRencontre,
-    inverserEquipe: body.data.inverserEquipe,
-    submittedBy: ctx.actor.userId,
-  });
-
-  if (result.outcome === "success") {
-    const author = await ctx.identity();
-    await insertMessage(ctx.db, { club_id: ctx.clubId, request_id: row.id, ...authorColumns(ctx), author_display_name: author.name, author_role_label: roleLabelFor(ctx.actor, requestRef(row)), body: `${author.name} a envoyé la demande de dérogation officielle à la FFBB (FBI).`, message_type: "SYSTEM", event: "OFFICIAL_SUBMITTED" });
-    await touch(ctx.db, row.id);
-  }
+  const author = await ctx.identity();
+  // La conversation garde la trace de l'envoi, qu'il parte de Vercel ou du poste du club.
+  const result = await createDerogationForClub(
+    ctx.db,
+    {
+      clubId: ctx.clubId,
+      matchId: row.match_id,
+      motif: body.data.motif,
+      modifierDate: body.data.modifierDate,
+      dateDerogation: body.data.dateDerogation ?? null,
+      modifierHoraire: body.data.modifierHoraire,
+      horaire: body.data.horaire ?? null,
+      inverserRencontre: body.data.inverserRencontre,
+      inverserEquipe: body.data.inverserEquipe,
+      submittedBy: ctx.actor.userId,
+    },
+    {
+      conversation: {
+        requestId: row.id,
+        authorUserId: ctx.actor.userId,
+        authorLicencieId: ctx.actor.licencieId,
+        authorMembershipId: ctx.membershipId,
+        authorName: author.name,
+        authorRoleLabel: roleLabelFor(ctx.actor, requestRef(row)),
+      },
+    },
+  );
 
   const fresh = (await loadRequest(ctx.db, ctx.clubId, row.id)) as RequestRow;
   return { outcome: result.outcome, message: result.message, request: await buildDetail(ctx.db, fresh, ctx.actor, await loadClubVenues(ctx.db, ctx.clubId)) };

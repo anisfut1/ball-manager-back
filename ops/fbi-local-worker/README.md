@@ -76,8 +76,12 @@ npm run fbi:local-worker
   `check_derogation`), licences validées (`import_licences` : export Excel de
   « Gestion des licences », filtre Validé, une fois par jour ou sur demande
   depuis la page Joueurs) et test de connexion.
-  Restent sur Vercel : les actions déclenchées à la main dans l'appli
-  (vérifier/créer/répondre à une dérogation tout de suite).
+  Envoi d'une dérogation officielle et réponse à une dérogation (2026-10-20) :
+  tant que le worker tourne, elles passent par CETTE session — surveillées
+  toutes les 4 s entre deux passes (`FBI_LOCAL_WRITE_POLL_MS`), le résultat
+  revient dans l'app en quelques secondes. Worker arrêté (Ctrl+C) : Vercel
+  les envoie lui-même, comme avant. Une écriture n'est jamais rejouée.
+  Reste sur Vercel : « Vérifier sur FBI » d'une seule dérogation.
 - Journal : `fbi-local-worker-<date>.jsonl` (sans identifiant, mot de passe
   ni valeur de cookie).
 - Tant qu'il tourne, Vercel ne se connecte plus à FBI (bail de 30 min

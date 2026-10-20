@@ -27,7 +27,7 @@ const FfbbIntegrationStatusDtoSchema = z.object({
  */
 export const FbiActiveJobDtoSchema = z
   .object({
-    type: z.enum(["test_connection", "discover_emarque", "reconcile_schedule", "check_derogation", "check_all_derogations", "import_licences"]),
+    type: z.enum(["test_connection", "discover_emarque", "reconcile_schedule", "check_derogation", "check_all_derogations", "import_licences", "create_derogation", "respond_derogation"]),
     startedAt: z.string(),
   })
   .openapi("FbiActiveJobDto");
