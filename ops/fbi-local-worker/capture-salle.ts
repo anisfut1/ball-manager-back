@@ -17,6 +17,7 @@ interface PrivateClient {
   navigateToDerogationSearchScreen(page: Page, etat: "tousLesEtats" | "creer"): Promise<void>;
   resolveDerogationScope(page: Page): Promise<{ scope: Page | Locator; found: boolean }>;
   derogationRowDetailHref(scope: Page | Locator, rowIndex: number): Promise<string | null>;
+  waitForDerogationTableRefresh(scope: Page | Locator, previousSignature: string): Promise<void>;
 }
 
 interface NetworkEntry {
@@ -78,15 +79,24 @@ export async function captureSalleForm(client: BrowserFbiClient, session: Browse
 
   try {
     // 1. Une rencontre « A Créer » : le premier lien de la liste.
+    // Même attente que l'envoi réel (`createDerogation`) : le tableau se
+    // remplit après coup, le lire tout de suite ne donne qu'une ligne vide.
     await priv.navigateToDerogationSearchScreen(page, "creer");
+    const { scope } = await priv.resolveDerogationScope(page);
+    const before = JSON.stringify(await selectors.resultsTableGenericRows(scope).catch(() => null));
     const submit = selectors.searchSubmitControl(page).first();
     if ((await submit.count().catch(() => 0)) > 0) await submit.click();
     await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
-    await page.waitForTimeout(1_500);
-    const { scope } = await priv.resolveDerogationScope(page);
-    const rows = await selectors.resultsTableGenericRows(scope);
-    notes.push(`${rows?.length ?? 0} rencontre(s) « A Créer » listée(s)`);
-    const href = rows && rows.length > 0 ? await priv.derogationRowDetailHref(scope, 0) : null;
+    await priv.waitForDerogationTableRefresh(scope, before).catch(() => undefined);
+    let href: string | null = null;
+    for (let attempt = 0; attempt < 5 && !href; attempt += 1) {
+      const rows = await selectors.resultsTableGenericRows(scope);
+      for (let index = 0; index < Math.min(rows?.length ?? 0, 5) && !href; index += 1) href = await priv.derogationRowDetailHref(scope, index);
+      if (!href) {
+        notes.push(`essai ${attempt + 1} : ${rows?.length ?? 0} ligne(s), aucun lien`);
+        await page.waitForTimeout(3_000);
+      }
+    }
     if (!href) return { at: new Date().toISOString(), ok: false, notes: [...notes, "aucun lien de création trouvé"], steps: [await snapshot(page, "liste_a_creer")] };
 
     await page.goto(new URL(href, page.url()).toString(), { waitUntil: "domcontentloaded" });
