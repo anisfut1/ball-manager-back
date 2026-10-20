@@ -224,6 +224,9 @@ export interface DerogationCreationRequest {
   horaire: string | null;
   inverserRencontre: boolean;
   inverserEquipe: boolean;
+  /** Nom du gymnase tel qu'enregistré au club (début du libellé FBI, ex. « COMPLEXE SPORTIF DU LIDO »). */
+  modifierSalle?: boolean;
+  salle?: string | null;
 }
 
 /**

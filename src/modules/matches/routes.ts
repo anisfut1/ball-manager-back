@@ -148,6 +148,8 @@ matchesRouter.post("/:matchId/derogation/create", requireClubRole("club_admin"),
     horaire: body.data.horaire ?? null,
     inverserRencontre: body.data.inverserRencontre,
     inverserEquipe: body.data.inverserEquipe,
+    modifierSalle: body.data.modifierSalle,
+    clubVenueId: body.data.clubVenueId ?? null,
     submittedBy: user.id,
   });
 

@@ -852,6 +852,45 @@ describe("BrowserFbiClient.createDerogation (ÉCRIT réellement sur FBI — cré
     await client.closeSession(session);
   });
 
+  it("salle : cherche le gymnase par son nom dans la fenêtre FBI, choisit la bonne ligne, puis enregistre (relevé réel du 2026-10-20)", async () => {
+    server.setRoute({ path: "/enregistrerDerogation.fbi", method: "POST", contentType: "text/plain", body: "" });
+    const client = new BrowserFbiClient({ baseUrl: server.baseUrl, browser, navigationSettleMs: 50 });
+    const session = await client.login({ username: "club1234", password: "secret" });
+    const result = await client.createDerogation(session, "2659", "PRF", {
+      motif: "Match au Lido.",
+      modifierDate: false,
+      dateDerogation: null,
+      modifierHoraire: false,
+      horaire: null,
+      inverserRencontre: false,
+      inverserEquipe: false,
+      modifierSalle: true,
+      salle: "COMPLEXE SPORTIF DU LIDO",
+    });
+    expect(result).toEqual({ outcome: "success" });
+    await client.closeSession(session);
+  });
+
+  it("salle inconnue sur FBI : rien n'est enregistré, message explicite", async () => {
+    const client = new BrowserFbiClient({ baseUrl: server.baseUrl, browser, navigationSettleMs: 50 });
+    const session = await client.login({ username: "club1234", password: "secret" });
+    const result = await client.createDerogation(session, "2659", "PRF", {
+      motif: "Match ailleurs.",
+      modifierDate: false,
+      dateDerogation: null,
+      modifierHoraire: false,
+      horaire: null,
+      inverserRencontre: false,
+      inverserEquipe: false,
+      modifierSalle: true,
+      salle: "PALAIS DES SPORTS",
+    });
+    expect(result?.outcome).toBe("unknown");
+    expect(result?.message).toContain("salle « PALAIS DES SPORTS » introuvable sur FBI");
+    expect(session.page.url()).toContain("afficherDerogation.fbi");
+    await client.closeSession(session);
+  });
+
   it("renvoie null quand aucune rencontre 'A Créer' ne correspond au numéro (jamais un outcome fabriqué)", async () => {
     const client = new BrowserFbiClient({ baseUrl: server.baseUrl, browser, navigationSettleMs: 50 });
     const session = await client.login({ username: "club1234", password: "secret" });
