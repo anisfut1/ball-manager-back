@@ -19,7 +19,10 @@
  *
  * Tous les jobs FBI du club passent par CETTE session : feuilles e-Marque,
  * calendrier (`reconcile_schedule`), dérogations (`check_all_derogations`,
- * `check_derogation`), test de connexion. Le parsing des feuilles et les
+ * `check_derogation`), test de connexion — et les ÉCRITURES (dérogation
+ * officielle, réponse à une dérogation, 2026-10-20) : surveillées toutes les
+ * quelques secondes entre deux passes, traitées aussitôt pendant que la
+ * personne attend la réponse dans l'app ou sur le site. Le parsing des feuilles et les
  * stats restent faits par l'API.
  *
  * Configuration : `.env.fbi-local` à la racine (voir README), sur le poste.
@@ -57,6 +60,7 @@ const MAX_JOBS_PER_PASS = Number(process.env.FBI_LOCAL_MAX_JOBS_PER_PASS || 10);
 const PAUSE_BETWEEN_JOBS_MS = Number(process.env.FBI_LOCAL_PAUSE_MS || 5_000);
 const RELOGIN = process.env.FBI_LOCAL_RELOGIN !== "never";
 const LEASE_MIN = 30;
+const WRITE_POLL_MS = Number(process.env.FBI_LOCAL_WRITE_POLL_MS || 4_000);
 const BASE_URL = process.env.FBI_BASE_URL || "https://extranet.ffbb.com/fbi";
 
 const { createServiceSupabaseClient } = await import("../../src/db/client.js");
@@ -67,6 +71,8 @@ const { processReconcileScheduleJob } = await import("../../src/jobs/process-rec
 const { processCheckAllDerogationsJob } = await import("../../src/jobs/process-check-all-derogations.js");
 const { processCheckDerogationJob } = await import("../../src/jobs/process-check-derogation.js");
 const { processImportLicencesJob } = await import("../../src/jobs/process-import-licences.js");
+const { processDerogationWriteJob } = await import("../../src/jobs/process-derogation-write.js");
+const { claimNextFbiWriteJob } = await import("../../src/modules/derogations/fbi-write-routing.js");
 const { processDiscoverEmarqueJobInSession } = await import("../../src/jobs/process-discover-emarque.js");
 const { checkFbiReachability, recordFbiReachability, recentFbiCredentialLogin } = await import("../../src/integrations/fbi/fbi-diagnostics.js");
 const { getFbiCredentials } = await import("../../src/integrations/fbi/credentials-store.js");
@@ -256,6 +262,9 @@ async function pass(): Promise<void> {
   }
 
   for (let done = 0; done < MAX_JOBS_PER_PASS && session; done += 1) {
+    // Une écriture attendue par quelqu'un passe avant la suite de la passe.
+    await processWriteJobs();
+    if (!session) break;
     const job = await claimNextJobForClub(supabase, clubId, workerId);
     if (!job) break;
     if (done > 0) await new Promise((resolve) => setTimeout(resolve, PAUSE_BETWEEN_JOBS_MS));
@@ -266,7 +275,42 @@ async function pass(): Promise<void> {
   }
 }
 
+/**
+ * Écritures FBI en file (dérogation officielle, réponse) : traitées tout de
+ * suite dans la session gardée. Session expirée ou absente : UNE connexion,
+ * aux mêmes conditions qu'une passe ; sinon l'écriture attend la passe suivante.
+ */
+async function processWriteJobs(): Promise<void> {
+  for (;;) {
+    const { data: waiting } = await supabase
+      .from("fbi_jobs")
+      .select("id")
+      .eq("club_id", clubId)
+      .in("type", ["create_derogation", "respond_derogation"])
+      .eq("status", "pending")
+      .limit(1)
+      .maybeSingle();
+    if (!waiting) return;
+    if (session && (await checkSession()) === "expired") {
+      expiredOnce = true;
+      await dropSession();
+    }
+    if (!session) {
+      if (expiredOnce && !RELOGIN) return record("write_waiting", {}, "envoi FBI en attente : session expirée et FBI_LOCAL_RELOGIN=never");
+      const lastLogin = await recentFbiCredentialLogin(supabase, clubId);
+      if (lastLogin) return record("write_waiting", { lastLogin }, `envoi FBI en attente : dernière connexion à ${lastLogin.toISOString()} (< 12 min)`);
+      if (!(await loginOnce())) return;
+    }
+    const job = await claimNextFbiWriteJob(supabase, clubId, workerId);
+    if (!job || !session) return;
+    const outcome = await runJob(job, session);
+    record("job", { jobId: job.id, type: job.type, matchId: job.match_id, outcome }, `${JOB_LABELS[job.type] ?? job.type}${job.match_id ? ` (match ${job.match_id})` : ""} : ${outcome}`);
+  }
+}
+
 const JOB_LABELS: Record<string, string> = {
+  create_derogation: "envoi d'une dérogation officielle",
+  respond_derogation: "réponse à une dérogation",
   discover_emarque: "feuille e-Marque",
   reconcile_schedule: "calendrier FBI",
   check_all_derogations: "dérogations (toutes)",
@@ -291,6 +335,11 @@ async function runJob(job: Awaited<ReturnType<typeof claimNextJobForClub>> & obj
       return (await processCheckDerogationJob(supabase, job, shared)) ? "dérogation vérifiée" : "erreur (nouvel essai planifié)";
     case "import_licences":
       return (await processImportLicencesJob(supabase, job, shared)) ? "licenciés mis à jour" : "erreur (nouvel essai planifié)";
+    case "create_derogation":
+    case "respond_derogation": {
+      const result = await processDerogationWriteJob(supabase, job, shared);
+      return !result ? "erreur (non rejouée, message affiché à la personne)" : result.outcome === "success" ? "envoyé sur FBI" : `refusé par FBI : ${result.message ?? "sans message"}`;
+    }
     case "test_connection": {
       // La session gardée vient d'être vérifiée authentifiée en début de passe.
       const now = new Date().toISOString();
@@ -322,5 +371,14 @@ for (;;) {
   } catch (error) {
     record("pass_error", { error: error instanceof Error ? error.message.split("\n")[0] : String(error) }, `passe en erreur : ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
   }
-  await new Promise((resolve) => setTimeout(resolve, INTERVAL_MIN * 60_000));
+  // Entre deux passes : un envoi FBI demandé dans l'app part en quelques secondes.
+  const nextPass = Date.now() + INTERVAL_MIN * 60_000;
+  while (Date.now() < nextPass) {
+    await new Promise((resolve) => setTimeout(resolve, WRITE_POLL_MS));
+    try {
+      await processWriteJobs();
+    } catch (error) {
+      record("write_error", { error: error instanceof Error ? error.message.split("\n")[0] : String(error) }, `envoi FBI en erreur : ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
+    }
+  }
 }

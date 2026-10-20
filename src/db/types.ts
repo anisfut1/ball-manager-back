@@ -52,7 +52,7 @@ export type CoachRole = "principal" | "adjoint";
 export type RefereeRole = "referee_1" | "referee_2" | "referee_3";
 export type TableOfficialRole = "scorer" | "assistant_scorer" | "timekeeper" | "shot_clock_operator" | "commissioner" | "other";
 export type HistoricalSyncMode = "current_season" | "last_30_days" | "none";
-export type FbiJobType = "test_connection" | "discover_emarque" | "reconcile_schedule" | "check_derogation" | "check_all_derogations" | "import_licences";
+export type FbiJobType = "test_connection" | "discover_emarque" | "reconcile_schedule" | "check_derogation" | "check_all_derogations" | "import_licences" | "create_derogation" | "respond_derogation";
 export type FbiJobStatus = "pending" | "claimed" | "running" | "succeeded" | "failed";
 export type MatchDocumentType = "emarque_zip" | "match_sheet" | "summary" | "shot_chart" | "other";
 export type MatchDocumentStatus = "downloaded" | "parsing" | "imported" | "error";
@@ -81,6 +81,8 @@ export type FbiJobRow = {
   created_at: string;
   /** Début de la fenêtre de vérification e-Marque d'un job relancé à la main (sinon : fin du match) — voir `nextEmarqueCheckAt`. */
   window_start: string | null;
+  /** Écriture FBI confiée au worker local (create_derogation / respond_derogation). */
+  payload?: unknown;
 };
 
 export interface Database {
@@ -1184,6 +1186,7 @@ export interface Database {
           result?: unknown;
           created_at?: string;
           window_start?: string | null;
+          payload?: unknown;
         }
       >;
 

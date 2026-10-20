@@ -472,14 +472,23 @@ describe("espace public : licencié Coach / Coordinateur (drapeaux /joueurs)", (
 // (mocké ici : aucun appel FBI réel en test).
 // ---------------------------------------------------------------------------
 const officialMock = vi.hoisted(() => ({ create: vi.fn() }));
-vi.mock("../derogations/create-derogation.js", () => ({ createDerogationForClub: officialMock.create }));
+vi.mock("../derogations/create-derogation.js", async (importOriginal) => ({ ...(await importOriginal<typeof import("../derogations/create-derogation.js")>()), createDerogationForClub: officialMock.create }));
+
+/** Comme la vraie fonction : l'envoi réussi est tracé dans la conversation (Vercel ou poste du club). */
+async function fakeCreate(result: { outcome: "success" | "error"; message: string | null }) {
+  const { noteOfficialResult } = await vi.importActual<typeof import("../derogations/create-derogation.js")>("../derogations/create-derogation.js");
+  officialMock.create.mockImplementation(async (db, params: { clubId: string }, options?: { conversation?: Parameters<typeof noteOfficialResult>[2] }) => {
+    if (options?.conversation) await noteOfficialResult(db, params.clubId, options.conversation, result, false);
+    return result;
+  });
+}
 
 describe("envoi officiel FBI depuis la demande (coordinateur)", () => {
   const OFFICIAL_BODY = { motif: "Tournoi U15F le samedi", modifierDate: true, dateDerogation: "11/10/2026", modifierHoraire: true, horaire: "15:00", inverserRencontre: false, inverserEquipe: false };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     officialMock.create.mockReset();
-    officialMock.create.mockResolvedValue({ outcome: "success", message: null });
+    await fakeCreate({ outcome: "success", message: null });
   });
 
   it("refusé tant que la demande n'est pas prise en charge, puis envoyé avec le process existant", async () => {
@@ -495,7 +504,11 @@ describe("envoi officiel FBI depuis la demande (coordinateur)", () => {
     expect(res.status).toBe(200);
     const out = await json<{ outcome: string; request: Detail }>(res);
     expect(out.outcome).toBe("success");
-    expect(officialMock.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ clubId: CLUB_A.id, matchId: TARGET.id, dateDerogation: "11/10/2026", horaire: "15:00", submittedBy: "coord" }));
+    expect(officialMock.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ clubId: CLUB_A.id, matchId: TARGET.id, dateDerogation: "11/10/2026", horaire: "15:00", submittedBy: "coord" }),
+      { conversation: expect.objectContaining({ requestId: created.id, authorUserId: "coord" }) },
+    );
     expect(out.request.messages.at(-1)).toMatchObject({ type: "SYSTEM", event: "OFFICIAL_SUBMITTED" });
   });
 
@@ -509,7 +522,7 @@ describe("envoi officiel FBI depuis la demande (coordinateur)", () => {
   });
 
   it("échec FBI : renvoyé tel quel, aucun message « envoyé » dans la conversation", async () => {
-    officialMock.create.mockResolvedValue({ outcome: "error", message: "Rencontre introuvable sur FBI." });
+    await fakeCreate({ outcome: "error", message: "Rencontre introuvable sur FBI." });
     const created = await json<Detail>(await createRequest());
     as("coord");
     await request(`/derogation-requests/${created.id}/actions`, { method: "POST", body: { action: "TAKE_IN_CHARGE" } });
@@ -525,7 +538,7 @@ describe("envoi officiel FBI depuis la demande (coordinateur)", () => {
     await publicRequest(`/${created.id}/actions`, "tok-sophie2", { method: "POST", body: { action: "TAKE_IN_CHARGE" } });
     const res = await publicRequest(`/${created.id}/official`, "tok-sophie2", { method: "POST", body: OFFICIAL_BODY });
     expect(res.status).toBe(200);
-    expect(officialMock.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ submittedBy: null }));
+    expect(officialMock.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ submittedBy: null }), expect.anything());
   });
 });
 

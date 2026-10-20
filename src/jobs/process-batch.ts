@@ -61,6 +61,10 @@ export async function processJobBatch(
       } else if (job.type === "import_licences") {
         const { processImportLicencesJob } = await import("./process-import-licences.js");
         jobSucceeded = await processImportLicencesJob(supabase, job);
+      } else if (job.type === "create_derogation" || job.type === "respond_derogation") {
+        // Écriture laissée en file par le poste du club arrêté entre-temps : Vercel l'envoie.
+        const { processDerogationWriteJob } = await import("./process-derogation-write.js");
+        jobSucceeded = (await processDerogationWriteJob(supabase, job)) !== null;
       } else if (job.type === "check_all_derogations") {
         const { processCheckAllDerogationsJob } = await import("./process-check-all-derogations.js");
         jobSucceeded = await processCheckAllDerogationsJob(supabase, job);
