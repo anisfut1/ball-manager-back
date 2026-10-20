@@ -73,6 +73,7 @@ const { processCheckDerogationJob } = await import("../../src/jobs/process-check
 const { processImportLicencesJob } = await import("../../src/jobs/process-import-licences.js");
 const { processDerogationWriteJob } = await import("../../src/jobs/process-derogation-write.js");
 const { claimNextFbiWriteJob } = await import("../../src/modules/derogations/fbi-write-routing.js");
+const { captureSalleForm } = await import("./capture-salle.js");
 const { processDiscoverEmarqueJobInSession } = await import("../../src/jobs/process-discover-emarque.js");
 const { checkFbiReachability, recordFbiReachability, recentFbiCredentialLogin } = await import("../../src/integrations/fbi/fbi-diagnostics.js");
 const { getFbiCredentials } = await import("../../src/integrations/fbi/credentials-store.js");
@@ -281,6 +282,7 @@ async function pass(): Promise<void> {
  * aux mêmes conditions qu'une passe ; sinon l'écriture attend la passe suivante.
  */
 async function processWriteJobs(): Promise<void> {
+  await processCaptureRequest();
   for (;;) {
     const { data: waiting } = await supabase
       .from("fbi_jobs")
@@ -305,6 +307,32 @@ async function processWriteJobs(): Promise<void> {
     if (!job || !session) return;
     const outcome = await runJob(job, session);
     record("job", { jobId: job.id, type: job.type, matchId: job.match_id, outcome }, `${JOB_LABELS[job.type] ?? job.type}${job.match_id ? ` (match ${job.match_id})` : ""} : ${outcome}`);
+  }
+}
+
+/**
+ * Relevé en lecture seule demandé à distance (`platform_settings.fbi_capture_request`
+ * = "salle") : formulaire de modification de salle, jamais enregistré.
+ */
+async function processCaptureRequest(): Promise<void> {
+  const { data: requested } = await supabase.from("platform_settings").select("value").eq("key", "fbi_capture_request").maybeSingle();
+  if (requested?.value !== "salle") return;
+  if (session && (await checkSession()) === "expired") await dropSession();
+  if (!session) {
+    if (await recentFbiCredentialLogin(supabase, clubId)) return;
+    if (!(await loginOnce())) return;
+  }
+  if (!session) return;
+  await supabase.from("platform_settings").upsert({ key: "fbi_capture_request", value: "", updated_at: new Date().toISOString() }, { onConflict: "key" });
+  record("capture", {}, "relevé du formulaire de salle FBI (lecture seule, rien n'est enregistré)…");
+  try {
+    const result = await captureSalleForm(client, session, BASE_URL);
+    await supabase.from("platform_settings").upsert({ key: "fbi_capture_salle", value: JSON.stringify(result), updated_at: new Date().toISOString() }, { onConflict: "key" });
+    record("capture", { ok: result.ok, notes: result.notes }, `relevé du formulaire de salle terminé : ${JSON.stringify(result.notes)}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message.split("\n")[0] : String(error);
+    await supabase.from("platform_settings").upsert({ key: "fbi_capture_salle", value: JSON.stringify({ at: new Date().toISOString(), ok: false, error: message }), updated_at: new Date().toISOString() }, { onConflict: "key" });
+    record("capture", { error: message }, `relevé du formulaire de salle en erreur : ${message}`);
   }
 }
 
