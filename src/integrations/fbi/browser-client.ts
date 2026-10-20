@@ -2394,6 +2394,46 @@ export class BrowserFbiClient {
    * pour le raisonnement complet (45s, jamais un succès supposé sans
    * preuve).
    */
+  /**
+   * Date demandée du formulaire de création (« Date rencontre » côté FBI) :
+   * saisie au clavier dans le champ à calendrier, calendrier refermé, puis
+   * valeur posée directement sur CHAQUE champ `…dateDerogation` de la page
+   * (visible ou caché), événements `input`/`change` compris, et via l'API du
+   * calendrier jQuery quand la page en a un — la valeur ne dépend plus du
+   * comportement du calendrier.
+   */
+  private async fillDerogationDate(page: Page, value: string, options: { typed?: boolean } = {}): Promise<void> {
+    const input = page.locator("#afficherDerogation_derogationForm_derogationDemandeBean_dateDerogation").first();
+    if (options.typed !== false) {
+      await input.click().catch(() => undefined);
+      await input.fill("");
+      await input.pressSequentially(value, { delay: 20 });
+      await input.press("Escape").catch(() => undefined);
+      await page.locator("#motif").click().catch(() => undefined);
+    }
+    await page.evaluate((date) => {
+      const fields = Array.from(document.querySelectorAll<HTMLInputElement>('input[name$=".dateDerogation"], input[id$="_dateDerogation"]'));
+      const jq = (window as unknown as { jQuery?: (el: Element) => { datepicker?: (...args: unknown[]) => unknown } }).jQuery;
+      for (const field of fields) {
+        field.value = date;
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+        field.dispatchEvent(new Event("change", { bubbles: true }));
+        try {
+          const widget = jq?.(field);
+          if (widget?.datepicker && field.classList.contains("hasDatepicker")) {
+            const [d, m, y] = date.split("/").map(Number);
+            widget.datepicker("setDate", new Date(y, m - 1, d));
+            field.value = date;
+          }
+        } catch {
+          // Pas de calendrier jQuery : la valeur posée suffit.
+        }
+      }
+    }, value);
+    const current = await input.inputValue().catch(() => "");
+    if (current !== value) throw new Error(`la date demandée n'a pas pu être saisie (champ : « ${current} », attendu : « ${value} »)`);
+  }
+
   async createDerogation(
     session: BrowserFbiSession,
     matchNumber: string,
@@ -2458,7 +2498,8 @@ export class BrowserFbiClient {
     try {
       if (request.modifierDate) {
         await page.locator("#modifierDate").check();
-        await page.locator("#afficherDerogation_derogationForm_derogationDemandeBean_dateDerogation").fill(request.dateDerogation ?? "");
+        await this.settle(page);
+        await this.fillDerogationDate(page, request.dateDerogation ?? "");
       }
 
       if (request.modifierHoraire) {
@@ -2470,9 +2511,25 @@ export class BrowserFbiClient {
       if (request.inverserEquipe) await page.locator("#inverserEquipe").check();
 
       await page.locator("#motif").fill(request.motif);
+
+      // Le calendrier de saisie peut vider la date en se refermant (constaté le
+      // 2026-10-20, match 9345 : « Le champ 'Date rencontre' est obligatoire »
+      // alors qu'elle avait été saisie) : elle est réaffirmée juste avant l'envoi.
+      if (request.modifierDate) await this.fillDerogationDate(page, request.dateDerogation ?? "", { typed: false });
     } catch (error) {
       return { outcome: "unknown", message: `Impossible de renseigner le formulaire de création FBI : ${error instanceof Error ? error.message : String(error)}` };
     }
+
+    // Trace des champs date/horaire réellement présents au moment de l'envoi
+    // (noms, identifiants, valeurs) : diagnostic si FBI refuse encore.
+    const dateFields = await page
+      .evaluate(() =>
+        Array.from(document.querySelectorAll("input"))
+          .filter((el) => /date|horaire|heure/i.test(`${el.name} ${el.id}`))
+          .map((el) => ({ name: el.name, id: el.id, type: el.type, value: el.value, disabled: el.disabled, visible: el.offsetParent !== null })),
+      )
+      .catch(() => null);
+    logInfo("Création d'une dérogation FBI : champs date/horaire avant envoi", { matchNumber, dateFields });
 
     const saveButton = page.locator("button.boutonEnregistrer").first();
     if ((await saveButton.count().catch(() => 0)) === 0) {
