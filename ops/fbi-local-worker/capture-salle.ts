@@ -30,7 +30,7 @@ interface NetworkEntry {
 
 const MAX_HTML = 250_000;
 const MAX_BODY = 40_000;
-const SEARCH_TERM = process.env.FBI_CAPTURE_SALLE_TERM || "CLAVEL";
+const SEARCH_TERM = process.env.FBI_CAPTURE_SALLE_TERM || "LIDO";
 
 const cut = (text: string | null | undefined, max: number) => (text && text.length > max ? `${text.slice(0, max)}… (tronqué, ${text.length})` : (text ?? null));
 
