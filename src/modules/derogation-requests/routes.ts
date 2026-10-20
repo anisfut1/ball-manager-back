@@ -503,6 +503,8 @@ export async function handleOfficial(ctx: Ctx, requestId: string, rawBody: unkno
       horaire: body.data.horaire ?? null,
       inverserRencontre: body.data.inverserRencontre,
       inverserEquipe: body.data.inverserEquipe,
+      modifierSalle: body.data.modifierSalle,
+      clubVenueId: body.data.clubVenueId ?? null,
       submittedBy: ctx.actor.userId,
     },
     {

@@ -56,7 +56,12 @@
       <div id="salle" style="display:none">
         <input type="hidden" name="derogationForm.derogationDemandeBean.idSalle" value="" id="idSalle" />
         <input type="text" name="derogationForm.derogationDemandeBean.libelleSalle" value="" disabled="disabled" id="nomSalle" class="form-control form-control-sm" />
+        <button class="btn" type="button" onclick="return rechercherModaleSalle();"></button>
+        <a href="#" onclick="reinitialiserSalle(); return false;; return false"></a>
       </div>
+      <!-- Fenêtre « Rechercher une salle » : contenu chargé à l'ouverture,
+           comme le vrai `rechercherModaleSalle()` (relevé du 2026-10-20). -->
+      <div id="rechercheSalleModale"><div id="rechercheSalleModaleCorps"></div></div>
 
       <input type="checkbox" name="derogationForm.derogationDemandeBean.inverserRencontre" value="true" id="inverserRencontre" class="fbi-checkbox" />
       <input type="checkbox" name="derogationForm.derogationDemandeBean.inverserEquipe" value="true" id="inverserEquipe" class="fbi-checkbox" />
@@ -90,6 +95,54 @@
         return true;
       }
 
+      // Salle — fonctions RÉELLES relevées sur FBI le 2026-10-20
+      // (`retourSalleModale`, `reinitialiserSalle`, `rechercherModaleSalle`,
+      // `rechercherSalleModaleAjax`) ; le formulaire de la fenêtre reprend le
+      // HTML réel renvoyé par `rechercherSalleModaleAjax.fbi`. Les lignes de
+      // résultat (DataTables côté serveur) sont reconstituées : un lien qui
+      // appelle `retourSalleModale(id, nom)`. FBI cherche sur le DÉBUT du nom.
+      const SALLES = [
+        ["133430101", "GYMNASE MAURICE CLAVEL (34200 - SETE)", "17085"],
+        ["133430102", "COMPLEXE SPORTIF DU LIDO (34200 - SETE)", "17086"],
+      ];
+      function retourSalleModale(idSalle, nomSalle) {
+        document.getElementById("idSalle").value = idSalle;
+        document.getElementById("nomSalle").value = nomSalle;
+        document.getElementById("rechercheSalleModaleCorps").innerHTML = "";
+      }
+      function reinitialiserSalle() {
+        document.getElementById("idSalle").value = "";
+        document.getElementById("nomSalle").value = "";
+        return false;
+      }
+      function rechercherModaleSalle() {
+        setTimeout(function () {
+          document.getElementById("rechercheSalleModaleCorps").innerHTML =
+            '<form id="rechercherSalleModale">' +
+            '<input type="hidden" name="rechercherSalleModaleForm.rechercherSalleModaleBean.idLigne" value="" />' +
+            '<input type="text" name="rechercherSalleModaleForm.rechercherSalleModaleBean.numeroSalle" value="" id="numeroSalle" />' +
+            '<input type="text" name="rechercherSalleModaleForm.rechercherSalleModaleBean.nomSalle" value="" id="nomSalle" />' +
+            '<input type="text" name="rechercherSalleModaleForm.rechercherSalleModaleBean.codePostal" value="" id="codePostal" />' +
+            '<input type="text" name="rechercherSalleModaleForm.rechercherSalleModaleBean.nomCommune" value="" id="nomCommune" />' +
+            '<button id="rechercherModale" type="button" onClick="rechercherSalleModaleAjax();">Rechercher</button>' +
+            '</form><div id="getTableauSalleModale"></div>';
+        }, 100);
+        return false;
+      }
+      function rechercherSalleModaleAjax() {
+        const nom = document.querySelector('input[name="rechercherSalleModaleForm.rechercherSalleModaleBean.nomSalle"]').value.toUpperCase();
+        const lignes = SALLES.filter(function (s) { return nom === "" || s[1].indexOf(nom) === 0; });
+        setTimeout(function () {
+          document.getElementById("getTableauSalleModale").innerHTML =
+            '<table id="rechercheSalleModaleAjax"><thead><tr><th>N° de la salle:</th><th>Nom</th></tr></thead><tbody>' +
+            (lignes.length
+              ? lignes.map(function (s) { return '<tr><td>' + s[0] + '</td><td><a href="#" onclick="retourSalleModale(\'' + s[2] + '\',\'' + s[1] + '\'); return false;">' + s[1] + '</a></td></tr>'; }).join("")
+              : '<tr class="odd"><td valign="top" colspan="2" class="dataTables_empty">Aucune donnée disponible dans le tableau</td></tr>') +
+            '</tbody></table>';
+        }, 300);
+        return false;
+      }
+
       // Même exclusion mutuelle que le vrai JS de la page.
       document.getElementById("inverserEquipe").addEventListener("change", function () {
         if (this.checked) document.getElementById("inverserRencontre").checked = false;
@@ -106,6 +159,10 @@
         const motif = document.getElementById("motif").value;
         const dateDerogation = document.getElementById("afficherDerogation_derogationForm_derogationDemandeBean_dateDerogation").value;
         const horaire = document.getElementById("horaireHour").value;
+        if (document.getElementById("modifierSalle").checked && !document.getElementById("idSalle").value) {
+          afficherErreur('<ul class="errorMessage"><li>Création derogation : Le champ \'Salle\' est obligatoire</li></ul>');
+          return false;
+        }
 
         fetch("enregistrerDerogation.fbi", {
           method: "POST",

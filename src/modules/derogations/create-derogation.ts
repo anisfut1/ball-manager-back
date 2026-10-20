@@ -1,5 +1,5 @@
 import type { DbClient } from "../../db/client.js";
-import { conflict, notFound } from "../../api-error.js";
+import { badRequest, conflict, notFound } from "../../api-error.js";
 import { getFbiCredentials } from "../../integrations/fbi/credentials-store.js";
 import { logError, logInfo } from "../../logger.js";
 import type { SharedFbiSession } from "../../jobs/shared-session.js";
@@ -17,6 +17,11 @@ export interface CreateDerogationParams {
   inverserRencontre: boolean;
   inverserEquipe: boolean;
   submittedBy: string | null;
+  /** Changement de salle : gymnase du club choisi (`club_venues`), son nom est cherché sur FBI. */
+  modifierSalle?: boolean;
+  clubVenueId?: string | null;
+  /** Nom du gymnase, résolu côté serveur (jamais fourni par le client). */
+  salle?: string | null;
 }
 
 export interface CreateDerogationResult {
@@ -71,9 +76,10 @@ async function loadCreateTarget(supabase: DbClient, clubId: string, matchId: str
  * silencieuse même en cas d'échec, même principe que
  * `fbi_derogation_responses`.
  */
-export async function createDerogationForClub(supabase: DbClient, params: CreateDerogationParams, options: { conversation?: OfficialConversation } = {}): Promise<CreateDerogationResult> {
-  const { clubId, matchId } = params;
+export async function createDerogationForClub(supabase: DbClient, input: CreateDerogationParams, options: { conversation?: OfficialConversation } = {}): Promise<CreateDerogationResult> {
+  const { clubId, matchId } = input;
   const target = await loadCreateTarget(supabase, clubId, matchId);
+  const params: CreateDerogationParams = { ...input, salle: input.modifierSalle ? await loadVenueName(supabase, clubId, input.clubVenueId ?? null) : null };
 
   const credentials = await getFbiCredentials(supabase, clubId);
   if (!credentials) throw conflict("Configure d'abord un identifiant/mot de passe FBI avant de créer une dérogation.", "FBI_NOT_CONFIGURED");
@@ -87,6 +93,15 @@ export async function createDerogationForClub(supabase: DbClient, params: Create
   const result = await withVercelFbiSession(supabase, clubId, "Création d'une dérogation", { matchId }, (shared) => createDerogationInSession(supabase, shared, params, target));
   if (options.conversation) await noteOfficialResult(supabase, clubId, options.conversation, result, false);
   return result;
+}
+
+/** Nom du gymnase choisi, limité aux gymnases de CE club. */
+async function loadVenueName(supabase: DbClient, clubId: string, clubVenueId: string | null): Promise<string> {
+  if (!clubVenueId) throw badRequest("Choisis la salle quand « Modifier la salle » est coché.");
+  const { data, error } = await supabase.from("club_venues").select("name").eq("id", clubVenueId).eq("club_id", clubId).maybeSingle();
+  if (error) throw new Error(`Lecture de la salle échouée : ${error.message}`);
+  if (!data?.name) throw notFound("Salle introuvable pour ce club.");
+  return data.name;
 }
 
 /**
@@ -106,6 +121,8 @@ export async function createDerogationInSession(supabase: DbClient, shared: Shar
     horaire,
     inverserRencontre,
     inverserEquipe,
+    modifierSalle: params.modifierSalle ?? false,
+    salle: params.salle ?? null,
   });
 
   if (result === null) {

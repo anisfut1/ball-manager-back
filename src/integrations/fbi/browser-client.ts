@@ -2434,6 +2434,63 @@ export class BrowserFbiClient {
     if (current !== value) throw new Error(`la date demandée n'a pas pu être saisie (champ : « ${current} », attendu : « ${value} »)`);
   }
 
+  /**
+   * Salle demandée du formulaire de création — mécanique RÉELLE relevée sur
+   * FBI le 2026-10-20 (worker du poste du club, lecture seule) : case
+   * `#modifierSalle`, bouton `rechercherModaleSalle()` qui charge la fenêtre
+   * « Rechercher une salle » (champs `rechercherSalleModaleBean.numeroSalle`
+   * / `nomSalle` / `codePostal` / `nomCommune`, bouton `#rechercherModale`),
+   * tableau DataTables `#rechercheSalleModaleAjax` ; choisir une ligne
+   * appelle `retourSalleModale(idSalle, nomSalle)`, qui remplit `#idSalle`
+   * (caché) et le libellé. La recherche par nom porte sur le DÉBUT du nom
+   * (« LIDO » seul : 0 résultat ; « COMPLEXE SPORTIF DU LIDO » : la salle) —
+   * d'où le nom complet du gymnase du club. Jamais de ligne devinée : le
+   * libellé doit commencer par ce nom, et `#idSalle` doit être rempli, sinon
+   * l'envoi s'arrête avant l'enregistrement.
+   */
+  private async selectDerogationSalle(page: Page, venueName: string): Promise<void> {
+    const wanted = normalizeVenueName(venueName);
+    if (!wanted) throw new Error("salle demandée vide");
+    await page.locator("#modifierSalle").check();
+    await this.settle(page);
+    await page.locator('[onclick="return rechercherModaleSalle();"]').first().click();
+
+    const field = (name: string) => page.locator(`input[name="rechercherSalleModaleForm.rechercherSalleModaleBean.${name}"]`).first();
+    await field("nomSalle").waitFor({ state: "visible", timeout: 15_000 });
+    for (const name of ["numeroSalle", "codePostal", "nomCommune"]) await field(name).fill("").catch(() => undefined);
+    await field("nomSalle").fill(venueName);
+    await page.locator("#rechercherModale").click();
+
+    const rows = page.locator("#rechercheSalleModaleAjax tbody tr");
+    let labels: string[] = [];
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      await page.waitForTimeout(500);
+      if ((await rows.count().catch(() => 0)) === 0) continue;
+      if ((await rows.first().locator("td.dataTables_empty").count().catch(() => 0)) > 0) {
+        // « Aucune donnée » peut s'afficher avant la réponse : on laisse au moins 4 s.
+        if (deadline - Date.now() < 16_000) break;
+        continue;
+      }
+      labels = await rows.evaluateAll((trs) => trs.map((tr) => (tr.querySelectorAll("td")[tr.querySelectorAll("td").length - 1]?.textContent ?? "").trim()));
+      break;
+    }
+    const index = labels.findIndex((label) => normalizeVenueName(label).startsWith(wanted));
+    if (index === -1) throw new Error(`salle « ${venueName} » introuvable sur FBI (résultats : ${labels.length ? labels.join(" | ") : "aucun"})`);
+
+    const row = rows.nth(index);
+    const link = row.locator("a, [onclick]").first();
+    await ((await link.count().catch(() => 0)) > 0 ? link : row.locator("td").last()).click();
+    await page.waitForTimeout(800);
+
+    const idSalle = await page.locator("input#idSalle").first().inputValue().catch(() => "");
+    const libelle = await page.locator('input[name="derogationForm.derogationDemandeBean.libelleSalle"]').first().inputValue().catch(() => "");
+    if (!idSalle || !normalizeVenueName(libelle).startsWith(wanted)) {
+      throw new Error(`salle « ${venueName} » non retenue par le formulaire FBI (identifiant : « ${idSalle} », libellé : « ${libelle} »)`);
+    }
+    logInfo("Création d'une dérogation FBI : salle choisie", { salle: libelle, idSalle });
+  }
+
   async createDerogation(
     session: BrowserFbiSession,
     matchNumber: string,
@@ -2506,6 +2563,8 @@ export class BrowserFbiClient {
         await page.locator("#modifierHoraire").check();
         await page.locator("#horaireHour").fill(request.horaire ?? "");
       }
+
+      if (request.modifierSalle) await this.selectDerogationSalle(page, request.salle ?? "");
 
       if (request.inverserRencontre) await page.locator("#inverserRencontre").check();
       if (request.inverserEquipe) await page.locator("#inverserEquipe").check();
@@ -2869,4 +2928,9 @@ export class BrowserFbiClient {
     }
     await session.context.close();
   }
+}
+
+/** Nom de salle comparable : majuscules, sans accents ni espaces superflus. */
+function normalizeVenueName(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
 }

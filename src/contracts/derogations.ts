@@ -218,6 +218,13 @@ export const CreateDerogationDtoSchema = z
       .optional(),
     inverserRencontre: z.boolean(),
     inverserEquipe: z.boolean(),
+    /** Changer de salle (2026-10-20) : un des gymnases du club, retrouvé sur FBI par son nom. */
+    modifierSalle: z.boolean().optional().default(false),
+    clubVenueId: z.string().uuid().nullable().optional(),
+  })
+  .refine((body) => !body.modifierSalle || Boolean(body.clubVenueId), {
+    message: "Choisis la salle quand « Modifier la salle » est coché.",
+    path: ["clubVenueId"],
   })
   .refine((body) => !body.modifierDate || Boolean(body.dateDerogation), {
     message: "La date de dérogation est obligatoire quand « Modifier la date » est coché.",
@@ -231,8 +238,8 @@ export const CreateDerogationDtoSchema = z
     message: "« Inverser la rencontre » et « Inverser seulement les équipes » sont mutuellement exclusives.",
     path: ["inverserEquipe"],
   })
-  .refine((body) => body.modifierDate || body.modifierHoraire || body.inverserRencontre || body.inverserEquipe, {
-    message: "Coche au moins une modification (date, horaire, ou inversion) pour créer une dérogation.",
+  .refine((body) => body.modifierDate || body.modifierHoraire || body.modifierSalle || body.inverserRencontre || body.inverserEquipe, {
+    message: "Coche au moins une modification (date, horaire, salle ou inversion) pour créer une dérogation.",
     path: ["modifierDate"],
   })
   .openapi("CreateDerogationDto");
