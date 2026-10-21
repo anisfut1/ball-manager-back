@@ -2532,8 +2532,12 @@ export class BrowserFbiClient {
     if (!rows || rows.length === 0) return null;
 
     const normalized = rows.map(normalizeDerogationRow);
-    const matchIndex = normalized.findIndex((row) => row.numero === matchNumber && (division === null || row.division === division));
-    if (matchIndex === -1) return null;
+    const matchIndex = pickCreationRow(normalized, matchNumber, division);
+    if (matchIndex === -1) {
+      // Lignes « A Créer » renvoyées, aucune pour ce match : on dit lesquelles (diagnostic, rien n'est envoyé).
+      const seen = normalized.slice(0, 6).map((row) => `${row.numero ?? "?"} (${row.division ?? "?"})`);
+      return { outcome: "error", message: `Le match ${matchNumber}${division ? ` (${division})` : ""} n'est pas dans les rencontres « A Créer » de FBI — une dérogation existe peut-être déjà. FBI a renvoyé : ${seen.join(", ")}.` };
+    }
 
     const href = await this.derogationRowDetailHref(scope, matchIndex);
     if (!href) {
@@ -2933,4 +2937,24 @@ export class BrowserFbiClient {
 /** Nom de salle comparable : majuscules, sans accents ni espaces superflus. */
 function normalizeVenueName(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Ligne « A Créer » de la rencontre : même numéro, et même division quand
+ * elle est connue. FBI peut écrire la division autrement que la FFBB (poule,
+ * espaces, tirets : constaté le 2026-10-21, match 5018 « DMU11 »
+ * introuvable) — comparée normalisée, exacte d'abord, puis l'une contenant
+ * l'autre si une seule ligne correspond. Jamais un numéro seul : deux
+ * divisions du club peuvent avoir le même numéro de rencontre.
+ */
+export function pickCreationRow(rows: { numero: string | null; division: string | null }[], matchNumber: string, division: string | null): number {
+  const sameNumber = rows.map((row, index) => ({ row, index })).filter(({ row }) => row.numero === matchNumber);
+  if (sameNumber.length === 0) return -1;
+  if (division === null) return sameNumber[0].index;
+  const norm = (value: string | null) => (value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const wanted = norm(division);
+  const exact = sameNumber.find(({ row }) => norm(row.division) === wanted);
+  if (exact) return exact.index;
+  const close = sameNumber.filter(({ row }) => norm(row.division).includes(wanted) || (norm(row.division) !== "" && wanted.includes(norm(row.division))));
+  return close.length === 1 ? close[0].index : -1;
 }
