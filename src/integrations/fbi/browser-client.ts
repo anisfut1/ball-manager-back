@@ -1977,7 +1977,7 @@ export class BrowserFbiClient {
       // `matchNumberInResultsTable` côté découverte e-Marque : une
       // recherche mal filtrée pourrait renvoyer d'autres rencontres).
       const matchIndices = normalized.reduce<number[]>((acc, row, index) => {
-        if (row.numero === matchNumber && (division === null || row.division === division)) acc.push(index);
+        if (row.numero === matchNumber && (division === null || sameDivision(row.division, division))) acc.push(index);
         return acc;
       }, []);
       if (matchIndices.length === 0) continue;
@@ -2637,6 +2637,20 @@ export class BrowserFbiClient {
       return { outcome: "error", message: text.length > 0 ? text : "FBI a rejeté la création de la dérogation (message d'erreur vide)." };
     }
 
+    // Ni confirmation ni erreur (FBI lent, constaté le 2026-10-21 depuis
+    // Vercel) : on relit la dérogation sur FBI plutôt que de laisser un doute.
+    // Déposée aujourd'hui = créée ; aucune = pas passée, on peut réessayer.
+    try {
+      const found = await this.fetchDerogationForMatch(session, matchNumber, division);
+      const today = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date());
+      if (found && `${found.dateDepot ?? ""} ${found.dateDepotDetail ?? ""}`.includes(today)) {
+        logInfo("Création d'une dérogation FBI : confirmée par relecture", { matchNumber, etat: found.etat });
+        return { outcome: "success" };
+      }
+      if (!found) return { outcome: "error", message: "FBI n'a pas enregistré la dérogation (aucune trouvée en relisant FBI après l'envoi) — tu peux réessayer." };
+    } catch (error) {
+      logInfo("Création d'une dérogation FBI : relecture impossible", { matchNumber, error: error instanceof Error ? error.message.split("\n")[0] : String(error) });
+    }
     return { outcome: "unknown", message: "Aucune confirmation ni erreur détectée après l'enregistrement — à vérifier manuellement sur FBI avant de réessayer." };
   }
 
@@ -2967,10 +2981,20 @@ export function pickCreationRow(rows: { numero: string | null; division: string 
   const sameNumber = rows.map((row, index) => ({ row, index })).filter(({ row }) => row.numero === matchNumber);
   if (sameNumber.length === 0) return -1;
   if (division === null) return sameNumber[0].index;
-  const norm = (value: string | null) => (value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const wanted = norm(division);
-  const exact = sameNumber.find(({ row }) => norm(row.division) === wanted);
+  const wanted = normDivision(division);
+  const exact = sameNumber.find(({ row }) => normDivision(row.division) === wanted);
   if (exact) return exact.index;
-  const close = sameNumber.filter(({ row }) => norm(row.division).includes(wanted) || (norm(row.division) !== "" && wanted.includes(norm(row.division))));
+  const close = sameNumber.filter(({ row }) => sameDivision(row.division, division));
   return close.length === 1 ? close[0].index : -1;
+}
+
+function normDivision(value: string | null): string {
+  return (value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+/** Même division malgré une écriture différente (poule, espaces, tirets) : égales ou l'une contient l'autre, normalisées. */
+export function sameDivision(fbi: string | null, ours: string): boolean {
+  const a = normDivision(fbi);
+  const b = normDivision(ours);
+  return a !== "" && b !== "" && (a === b || a.includes(b) || b.includes(a));
 }
