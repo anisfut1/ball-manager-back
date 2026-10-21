@@ -1,5 +1,5 @@
 import type { DbClient } from "../../db/client.js";
-import { badRequest, conflict, notFound } from "../../api-error.js";
+import { ApiError, badRequest, conflict, notFound } from "../../api-error.js";
 import { getFbiCredentials } from "../../integrations/fbi/credentials-store.js";
 import { logError, logInfo } from "../../logger.js";
 import type { SharedFbiSession } from "../../jobs/shared-session.js";
@@ -109,6 +109,41 @@ async function loadVenueName(supabase: DbClient, clubId: string, clubVenueId: st
  * du poste du club, ou celle ouverte par Vercel le temps de l'envoi.
  */
 export async function createDerogationInSession(supabase: DbClient, shared: SharedFbiSession, params: CreateDerogationParams, target?: CreateTarget): Promise<CreateDerogationResult> {
+  try {
+    return await createDerogationInSessionOrThrow(supabase, shared, params, target);
+  } catch (error) {
+    // Erreur FBI inattendue (page injoignable, délai dépassé…) : jamais une
+    // « erreur interne » muette (constaté le 2026-10-21, match 5018) — le
+    // message réel est journalisé, tracé et renvoyé à la personne.
+    if (error instanceof ApiError) throw error;
+    const detail = error instanceof Error ? error.message.split("\n")[0].slice(0, 300) : String(error);
+    const message = `Envoi FBI interrompu : ${detail}. Vérifie sur FBI avant de réessayer.`;
+    logError("Création d'une dérogation FBI : erreur inattendue", error, { clubId: params.clubId, matchId: params.matchId });
+    await supabase
+      .from("fbi_derogation_creations")
+      .insert({
+        club_id: params.clubId,
+        match_id: params.matchId,
+        motif: params.motif,
+        modifier_date: params.modifierDate,
+        date_derogation: params.dateDerogation,
+        modifier_horaire: params.modifierHoraire,
+        horaire: params.horaire,
+        inverser_rencontre: params.inverserRencontre,
+        inverser_equipe: params.inverserEquipe,
+        submitted_by: params.submittedBy,
+        outcome: "unknown",
+        fbi_message: message,
+      })
+      .then(
+        () => undefined,
+        () => undefined,
+      );
+    return { outcome: "unknown", message };
+  }
+}
+
+async function createDerogationInSessionOrThrow(supabase: DbClient, shared: SharedFbiSession, params: CreateDerogationParams, target?: CreateTarget): Promise<CreateDerogationResult> {
   const { clubId, matchId, motif, modifierDate, dateDerogation, modifierHoraire, horaire, inverserRencontre, inverserEquipe, submittedBy } = params;
   const { client, session } = shared;
   const { numero, division } = target ?? (await loadCreateTarget(supabase, clubId, matchId));

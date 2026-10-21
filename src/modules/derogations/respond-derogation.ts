@@ -1,5 +1,5 @@
 import type { DbClient } from "../../db/client.js";
-import { conflict, notFound } from "../../api-error.js";
+import { ApiError, conflict, notFound } from "../../api-error.js";
 import { getFbiCredentials } from "../../integrations/fbi/credentials-store.js";
 import { logError, logInfo } from "../../logger.js";
 import type { SharedFbiSession } from "../../jobs/shared-session.js";
@@ -101,6 +101,18 @@ async function loadRespondTarget(supabase: DbClient, params: RespondToDerogation
 
 /** La réponse elle-même, dans une session FBI déjà ouverte (worker du poste du club, ou Vercel le temps de l'envoi). */
 export async function respondToDerogationInSession(supabase: DbClient, shared: SharedFbiSession, params: RespondToDerogationParams, target?: RespondTarget): Promise<RespondToDerogationResult> {
+  try {
+    return await respondToDerogationInSessionOrThrow(supabase, shared, params, target);
+  } catch (error) {
+    // Même règle que la création : jamais une « erreur interne » muette.
+    if (error instanceof ApiError) throw error;
+    const detail = error instanceof Error ? error.message.split("\n")[0].slice(0, 300) : String(error);
+    logError("Réponse à une dérogation FBI : erreur inattendue", error, { clubId: params.clubId, derogationCheckId: params.derogationCheckId });
+    return { outcome: "unknown", message: `Envoi FBI interrompu : ${detail}. Vérifie sur FBI avant de réessayer.` };
+  }
+}
+
+async function respondToDerogationInSessionOrThrow(supabase: DbClient, shared: SharedFbiSession, params: RespondToDerogationParams, target?: RespondTarget): Promise<RespondToDerogationResult> {
   const { clubId, derogationCheckId, decision, motifRefus, submittedBy } = params;
   const { client, session } = shared;
   const { check, match, division, idDerogation } = target ?? (await loadRespondTarget(supabase, params));

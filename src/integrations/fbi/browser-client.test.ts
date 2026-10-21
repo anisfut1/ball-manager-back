@@ -885,8 +885,7 @@ describe("BrowserFbiClient.createDerogation (ÉCRIT réellement sur FBI — cré
       modifierSalle: true,
       salle: "PALAIS DES SPORTS",
     });
-    expect(result?.outcome).toBe("unknown");
-    expect(result?.message).toContain("salle « PALAIS DES SPORTS » introuvable sur FBI");
+    expect(result).toMatchObject({ outcome: "unknown", message: expect.stringContaining("salle « PALAIS DES SPORTS » introuvable sur FBI") });
     expect(session.page.url()).toContain("afficherDerogation.fbi");
     await client.closeSession(session);
   });

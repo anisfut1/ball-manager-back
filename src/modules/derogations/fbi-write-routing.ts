@@ -138,7 +138,8 @@ export async function withVercelFbiSession<T>(supabase: DbClient, clubId: string
   try {
     return await run({ client, session });
   } finally {
-    await client.closeSession(session);
-    await browser.close();
+    // Une fermeture qui échoue ne doit jamais masquer le résultat de l'envoi.
+    await client.closeSession(session).catch((error: unknown) => logError(`${logLabel} : fermeture de la session FBI échouée`, error, { clubId }));
+    await browser.close().catch(() => undefined);
   }
 }
