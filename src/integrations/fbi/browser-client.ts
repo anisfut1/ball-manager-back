@@ -2528,14 +2528,23 @@ export class BrowserFbiClient {
       );
     }
 
-    const rows = await selectors.resultsTableGenericRows(scope);
+    // Tableau lu en cours de rechargement (constaté le 2026-10-21 depuis
+    // Vercel : 3 lignes sans numéro ni division) : on relit jusqu'à ce que les
+    // lignes aient un vrai numéro, 15 s au plus.
+    let rows = await selectors.resultsTableGenericRows(scope);
+    let normalized = (rows ?? []).map(normalizeDerogationRow);
+    for (let attempt = 0; attempt < 10 && normalized.length > 0 && normalized.every((row) => !row.numero); attempt += 1) {
+      await page.waitForTimeout(1_500);
+      rows = await selectors.resultsTableGenericRows(scope);
+      normalized = (rows ?? []).map(normalizeDerogationRow);
+    }
     if (!rows || rows.length === 0) return null;
 
-    const normalized = rows.map(normalizeDerogationRow);
     const matchIndex = pickCreationRow(normalized, matchNumber, division);
     if (matchIndex === -1) {
       // Lignes « A Créer » renvoyées, aucune pour ce match : on dit lesquelles (diagnostic, rien n'est envoyé).
-      const seen = normalized.slice(0, 6).map((row) => `${row.numero ?? "?"} (${row.division ?? "?"})`);
+      // Lignes illisibles : on montre la première telle que lue (en-têtes et valeurs), pour corriger la lecture.
+      const seen = normalized.every((row) => !row.numero) ? [`lignes illisibles, ex. ${JSON.stringify(rows[0]).slice(0, 200)}`] : normalized.slice(0, 6).map((row) => `${row.numero ?? "?"} (${row.division ?? "?"})`);
       return { outcome: "error", message: `Le match ${matchNumber}${division ? ` (${division})` : ""} n'est pas dans les rencontres « A Créer » de FBI — une dérogation existe peut-être déjà. FBI a renvoyé : ${seen.join(", ")}.` };
     }
 
