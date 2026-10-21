@@ -2544,11 +2544,27 @@ export class BrowserFbiClient {
       return { outcome: "unknown", message: "Lien vers le formulaire de création introuvable sur la ligne « A Créer » de cette rencontre." };
     }
 
-    try {
-      await page.goto(new URL(href, page.url()).toString(), { waitUntil: "domcontentloaded" });
-      await this.settle(page);
-    } catch (error) {
-      throw new FbiError(`Formulaire de création de dérogation FBI injoignable pour la rencontre ${matchNumber}.`, "NAVIGATION_FAILED", error);
+    // Ouverture patiente du formulaire (constaté le 2026-10-21 depuis Vercel,
+    // match 5018 : « injoignable » avec le délai par défaut de 30 s, alors que
+    // le poste du club l'ouvre sans souci) : deux essais de 60 s, on attend le
+    // formulaire lui-même plutôt que la fin du chargement de la page.
+    const formUrl = new URL(href, page.url()).toString();
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        await page.goto(formUrl, { waitUntil: "commit", timeout: 60_000 });
+        await page.locator("input#creation").first().waitFor({ state: "attached", timeout: 45_000 });
+        await this.settle(page);
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+        logInfo("Création d'une dérogation FBI : ouverture du formulaire échouée", { matchNumber, attempt, error: error instanceof Error ? error.message.split("\n")[0] : String(error) });
+      }
+    }
+    if (lastError) {
+      const cause = lastError instanceof Error ? lastError.message.split("\n")[0].slice(0, 160) : String(lastError);
+      throw new FbiError(`Formulaire de création de dérogation FBI injoignable pour la rencontre ${matchNumber} (${cause})`, "NAVIGATION_FAILED", lastError);
     }
 
     const creationMarker = page.locator("input#creation");
