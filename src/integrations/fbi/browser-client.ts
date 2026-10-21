@@ -2615,10 +2615,32 @@ export class BrowserFbiClient {
       return { outcome: "unknown", message: "Bouton d'enregistrement introuvable sur le formulaire de création FBI." };
     }
 
+    // Diagnostic de l'enregistrement (2026-10-21, Vercel : clic sans effet) :
+    // réponses du serveur FBI, boîtes de dialogue et erreurs JS de la page.
+    const trace: string[] = [];
+    const onResponse = (response: import("playwright-core").Response) => {
+      const request = response.request();
+      if (request.method() === "POST" || /enregistr/i.test(request.url())) trace.push(`${request.method()} ${new URL(request.url()).pathname} → ${response.status()}`);
+    };
+    const onDialog = (dialog: import("playwright-core").Dialog) => {
+      trace.push(`dialogue « ${dialog.message().slice(0, 120)} »`);
+      void dialog.accept().catch(() => undefined);
+    };
+    const onPageError = (error: Error) => trace.push(`erreur JS : ${error.message.slice(0, 120)}`);
+    page.on("response", onResponse);
+    page.on("dialog", onDialog);
+    page.on("pageerror", onPageError);
+    const stopTrace = () => {
+      page.off("response", onResponse);
+      page.off("dialog", onDialog);
+      page.off("pageerror", onPageError);
+    };
+
     const beforeUrl = page.url();
     try {
       await saveButton.click();
     } catch (error) {
+      stopTrace();
       return { outcome: "unknown", message: `Le clic sur "Enregistrer" a échoué : ${error instanceof Error ? error.message : String(error)}` };
     }
 
@@ -2629,6 +2651,8 @@ export class BrowserFbiClient {
       .waitForURL((candidate) => candidate.toString() !== beforeUrl, { timeout: 45_000 })
       .then(() => true)
       .catch(() => false);
+    stopTrace();
+    if (!navigatedAway) logInfo("Création d'une dérogation FBI : enregistrement sans confirmation", { matchNumber, trace });
     if (navigatedAway) return { outcome: "success" };
 
     const errorLocator = page.locator("ul.errorMessage").first();
@@ -2647,7 +2671,7 @@ export class BrowserFbiClient {
         logInfo("Création d'une dérogation FBI : confirmée par relecture", { matchNumber, etat: found.etat });
         return { outcome: "success" };
       }
-      if (!found) return { outcome: "error", message: "FBI n'a pas enregistré la dérogation (aucune trouvée en relisant FBI après l'envoi) — tu peux réessayer." };
+      if (!found) return { outcome: "error", message: `FBI n'a pas enregistré la dérogation (aucune trouvée en relisant FBI après l'envoi) — tu peux réessayer. Détail : ${trace.length ? trace.slice(0, 5).join(" ; ") : "aucune réponse de FBI au clic"}.` };
     } catch (error) {
       logInfo("Création d'une dérogation FBI : relecture impossible", { matchNumber, error: error instanceof Error ? error.message.split("\n")[0] : String(error) });
     }
