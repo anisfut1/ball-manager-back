@@ -23,6 +23,11 @@ export async function processDerogationWriteJob(supabase: DbClient, job: FbiJobR
         ? createDerogationInSession(supabase, session, payload.params as unknown as CreateDerogationParams)
         : respondToDerogationInSession(supabase, session, payload.params as unknown as RespondToDerogationParams);
     const result = shared ? await run(shared) : await withVercelFbiSession(supabase, job.club_id, "Écriture FBI en file", { jobId: job.id }, run);
+    // Vercel toujours bloqué par FBI, rien n'a été envoyé : la demande reste en attente du poste du club.
+    if (!shared && "notSent" in result && result.notSent) {
+      await supabase.from("fbi_jobs").update({ status: "pending", claimed_at: null, claimed_by: null, last_error: result.message }).eq("id", job.id);
+      return null;
+    }
     // La conversation d'abord : quand l'appelant voit le job terminé, le message y est déjà.
     if (job.type === "create_derogation" && payload.conversation) await noteOfficialResult(supabase, job.club_id, payload.conversation, result, true);
     await finishFbiWriteJob(supabase, job.id, result);
