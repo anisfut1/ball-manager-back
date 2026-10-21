@@ -890,7 +890,7 @@ describe("BrowserFbiClient.createDerogation (ÉCRIT réellement sur FBI — cré
     await client.closeSession(session);
   });
 
-  it("renvoie null quand aucune rencontre 'A Créer' ne correspond au numéro (jamais un outcome fabriqué)", async () => {
+  it("aucune ligne 'A Créer' pour ce numéro : erreur qui liste ce que FBI a renvoyé, rien n'est envoyé", async () => {
     const client = new BrowserFbiClient({ baseUrl: server.baseUrl, browser, navigationSettleMs: 50 });
     const session = await client.login({ username: "club1234", password: "secret" });
 
@@ -904,7 +904,7 @@ describe("BrowserFbiClient.createDerogation (ÉCRIT réellement sur FBI — cré
       inverserEquipe: false,
     });
 
-    expect(result).toBeNull();
+    expect(result).toMatchObject({ outcome: "error", message: expect.stringContaining("n'est pas dans les rencontres « A Créer »") });
     await client.closeSession(session);
   });
 
@@ -922,7 +922,8 @@ describe("BrowserFbiClient.createDerogation (ÉCRIT réellement sur FBI — cré
       inverserEquipe: false,
     });
 
-    expect(result).toBeNull();
+    // Jamais un numéro seul : la ligne d'une autre division n'est pas prise, FBI dit ce qu'il a renvoyé.
+    expect(result).toMatchObject({ outcome: "error", message: expect.stringContaining("FBI a renvoyé : 2659 (PRF)") });
     await client.closeSession(session);
   });
 
