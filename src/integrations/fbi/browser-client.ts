@@ -2538,7 +2538,22 @@ export class BrowserFbiClient {
       rows = await selectors.resultsTableGenericRows(scope);
       normalized = (rows ?? []).map(normalizeDerogationRow);
     }
-    if (!rows || rows.length === 0) return null;
+    // Tableau encore absent (constaté le 2026-10-21 depuis Vercel via le relais,
+    // match 5018, alors que la recherche manuelle trouve la rencontre) : on
+    // relit 20 s au plus avant de conclure, puis on dit ce que la page montrait.
+    for (let attempt = 0; attempt < 10 && (!rows || rows.length === 0); attempt += 1) {
+      await page.waitForTimeout(2_000);
+      rows = await selectors.resultsTableGenericRows(scope).catch(() => null);
+      normalized = (rows ?? []).map(normalizeDerogationRow);
+    }
+    if (!rows || rows.length === 0) {
+      const title = await page.title().catch(() => "");
+      const text = ((await page.locator("body").innerText().catch(() => "")) ?? "").replace(/\s+/g, " ").trim().slice(0, 240);
+      return {
+        outcome: "error",
+        message: `Le match ${matchNumber} n'apparaît pas dans la recherche FBI « A Créer » (aucun tableau de résultats lu). Page : ${page.url()} « ${title} » — ${text || "page vide"}.`,
+      };
+    }
 
     const matchIndex = pickCreationRow(normalized, matchNumber, division);
     if (matchIndex === -1) {
