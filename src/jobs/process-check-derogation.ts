@@ -9,6 +9,7 @@ import { classifyFbiLoginStatus, FbiError } from "../integrations/fbi/errors.js"
 import { nextErrorBackoffSeconds } from "./backoff.js";
 import { getEnv } from "../config/env.js";
 import { logError, logInfo } from "../logger.js";
+import { settleRequestsFromFbi } from "../modules/derogation-requests/fbi-settle.js";
 
 async function rescheduleJob(supabase: DbClient, job: FbiJobRow, delaySeconds: number, lastError: string | null): Promise<void> {
   await supabase
@@ -144,6 +145,7 @@ export async function processCheckDerogationJob(supabase: DbClient, job: FbiJobR
       await supabase.from("fbi_derogation_checks").delete().eq("club_id", job.club_id).eq("match_id", job.match_id);
     }
 
+    await settleRequestsFromFbi(supabase, job.club_id);
     await supabase.from("fbi_jobs").update({ status: "succeeded", finished_at: now, result: { found: Boolean(derogation) } }).eq("id", job.id);
 
     logInfo("Job check_derogation réussi", { clubId: job.club_id, jobId: job.id, matchId: job.match_id, found: Boolean(derogation) });

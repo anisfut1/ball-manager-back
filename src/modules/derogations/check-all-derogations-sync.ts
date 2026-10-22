@@ -8,6 +8,7 @@ import { getEnv } from "../../config/env.js";
 import { currentSeasonStart } from "../../season.js";
 import { logError, logInfo } from "../../logger.js";
 import { assertNoActiveFbiJob } from "./fbi-session-lock.js";
+import { settleRequestsFromFbi } from "../derogation-requests/fbi-settle.js";
 
 async function recordLoginOutcome(supabase: DbClient, clubId: string, success: boolean, message: string | null): Promise<void> {
   const now = new Date().toISOString();
@@ -136,6 +137,7 @@ export async function checkAllDerogationsForClubSync(supabase: DbClient, params:
       matched += 1;
     }
 
+    await settleRequestsFromFbi(supabase, clubId);
     const result = { derogationsFound: derogations.length, matched, unmatched };
     logInfo("Vérification globale des dérogations réussie (synchrone)", { clubId, ...result });
     return result;

@@ -890,7 +890,7 @@ describe("BrowserFbiClient.createDerogation (ÉCRIT réellement sur FBI — cré
     await client.closeSession(session);
   });
 
-  it("aucune ligne 'A Créer' pour ce numéro : erreur qui liste ce que FBI a renvoyé, rien n'est envoyé", async () => {
+  it("aucune ligne 'A Créer' pour ce numéro (tableau vide) : dérogation déjà existante, rien n'est envoyé", async () => {
     const client = new BrowserFbiClient({ baseUrl: server.baseUrl, browser, navigationSettleMs: 50 });
     const session = await client.login({ username: "club1234", password: "secret" });
 
@@ -904,7 +904,7 @@ describe("BrowserFbiClient.createDerogation (ÉCRIT réellement sur FBI — cré
       inverserEquipe: false,
     });
 
-    expect(result).toMatchObject({ outcome: "error", message: expect.stringContaining("n'est pas dans les rencontres « A Créer »") });
+    expect(result).toMatchObject({ outcome: "error", message: expect.stringContaining("une dérogation existe déjà pour ce match") });
     await client.closeSession(session);
   });
 

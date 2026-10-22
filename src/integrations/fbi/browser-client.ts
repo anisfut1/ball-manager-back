@@ -2557,6 +2557,12 @@ export class BrowserFbiClient {
 
     const matchIndex = pickCreationRow(normalized, matchNumber, division);
     if (matchIndex === -1) {
+      // Tableau vide (ligne « Aucune donnée », lue comme `{}` — match 5018 le
+      // 2026-10-22, dérogation déjà déposée à la main sur FBI) : rien à créer.
+      const emptyTable = rows.every((row) => Object.values(row).every((value) => !value.trim() || /aucune donn/i.test(value)));
+      if (emptyTable) {
+        return { outcome: "error", message: `Le match ${matchNumber}${division ? ` (${division})` : ""} n'a plus de rencontre « A Créer » sur FBI : une dérogation existe déjà pour ce match (déposée sur FBI). Rien n'a été envoyé.` };
+      }
       // Lignes « A Créer » renvoyées, aucune pour ce match : on dit lesquelles (diagnostic, rien n'est envoyé).
       // Lignes illisibles : on montre la première telle que lue (en-têtes et valeurs), pour corriger la lecture.
       const seen = normalized.every((row) => !row.numero) ? [`lignes illisibles, ex. ${JSON.stringify(rows[0]).slice(0, 200)}`] : normalized.slice(0, 6).map((row) => `${row.numero ?? "?"} (${row.division ?? "?"})`);
