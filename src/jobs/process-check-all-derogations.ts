@@ -11,6 +11,7 @@ import { getEnv } from "../config/env.js";
 import { currentSeasonStart } from "../season.js";
 import { derogationNotificationEvents, type DerogationSnapshot } from "../modules/derogations/notification-events.js";
 import { notifyFbiDerogationEvents } from "../modules/derogation-requests/notify.js";
+import { settleRequestsFromFbi } from "../modules/derogation-requests/fbi-settle.js";
 import { logError, logInfo } from "../logger.js";
 
 async function rescheduleJob(supabase: DbClient, job: FbiJobRow, delaySeconds: number, lastError: string | null): Promise<void> {
@@ -316,8 +317,12 @@ export async function processCheckAllDerogationsJob(supabase: DbClient, job: Fbi
     // Emails aux coordinateurs : dérogations adverses à traiter, réponses reçues (une fois chacune).
     const notificationsSent = await notifyFbiDerogationEvents(supabase, job.club_id, derogationNotificationEvents(snapshots));
 
+    // Demandes internes réglées par une dérogation acceptée sur FBI (2026-10-22).
+    const requestsSettled = await settleRequestsFromFbi(supabase, job.club_id);
+
     const result = {
       notificationsSent,
+      requestsSettled,
       derogationsFound: derogations.length,
       matched,
       unmatched,

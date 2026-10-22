@@ -7,6 +7,7 @@ import { classifyFbiLoginStatus, FbiError } from "../../integrations/fbi/errors.
 import { getEnv } from "../../config/env.js";
 import { logError, logInfo } from "../../logger.js";
 import { assertNoActiveFbiJob } from "./fbi-session-lock.js";
+import { settleRequestsFromFbi } from "../derogation-requests/fbi-settle.js";
 
 async function recordLoginOutcome(supabase: DbClient, clubId: string, success: boolean, message: string | null): Promise<void> {
   const now = new Date().toISOString();
@@ -102,6 +103,7 @@ export async function checkDerogationForMatchSync(supabase: DbClient, params: { 
       await supabase.from("fbi_derogation_checks").delete().eq("club_id", clubId).eq("match_id", matchId);
     }
 
+    await settleRequestsFromFbi(supabase, clubId);
     logInfo("Vérification de dérogation réussie (synchrone)", { clubId, matchId, found: Boolean(derogation) });
     return { found: Boolean(derogation) };
   } finally {
