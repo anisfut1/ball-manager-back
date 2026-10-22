@@ -147,6 +147,11 @@ export interface Database {
         { id?: string; club_id: string; name: string; address?: string | null; venue_id?: string | null; active?: boolean; sort_order?: number; created_at?: string; updated_at?: string }
       >;
 
+      club_venue_closures: Table<
+        { id: string; club_id: string; club_venue_id: string; start_date: string; end_date: string; period: "day" | "morning" | "afternoon"; reason: string | null; created_by: string | null; created_at: string },
+        { id?: string; club_id: string; club_venue_id: string; start_date: string; end_date: string; period?: "day" | "morning" | "afternoon"; reason?: string | null; created_by?: string | null; created_at?: string }
+      >;
+
       club_scheduling_rules: Table<
         { id: string; club_id: string; weekday: number; earliest_start: string; latest_start: string; created_at: string; updated_at: string },
         { id?: string; club_id: string; weekday: number; earliest_start: string; latest_start: string; created_at?: string; updated_at?: string }

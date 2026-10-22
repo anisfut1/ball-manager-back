@@ -95,4 +95,45 @@ describe("gymnases du club", () => {
     expect(patch.status).toBe(200);
     expect(state.clubVenues[0]).toMatchObject({ active: false, name: "Gymnase Maurice Clavel" });
   });
+
+  it("indisponibilités : ajout par le club_admin, conflits avec match à domicile et entraînement, suppression", async () => {
+    const VENUE = "55555555-5555-4555-8555-000000000001";
+    state.clubVenues = [{ id: VENUE, club_id: CLUB_A.id, name: "COMPLEXE SPORTIF DU LIDO", address: null, venue_id: "ffbb-lido", active: true, sort_order: 0 }];
+    state.matches = [
+      { id: "66666666-6666-4666-8666-000000000001", club_id: CLUB_A.id, team_id: TEAM_U15F, opponent_name: "Montpellier", match_datetime: "2099-11-07T10:00:00Z", venue_id: "ffbb-lido", venue_raw_label: null, is_home: true, status: "scheduled" },
+      { id: "66666666-6666-4666-8666-000000000002", club_id: CLUB_A.id, team_id: TEAM_U15F, opponent_name: "Agde", match_datetime: "2099-11-07T10:00:00Z", venue_id: "ffbb-agde", venue_raw_label: null, is_home: false, status: "scheduled" },
+    ] as never;
+    state.trainingOccurrences = [{ id: "77777777-7777-4777-8777-000000000001", club_id: CLUB_A.id, team_id: TEAM_U15F, starts_at: "2099-11-07T17:00:00Z", ends_at: "2099-11-07T18:30:00Z", club_venue_id: VENUE, status: "scheduled" }];
+    const body = { clubVenueId: VENUE, startDate: "2099-11-07", endDate: "2099-11-07", period: "afternoon", reason: "Tournoi de handball" };
+    const post = (as: string) => {
+      currentUserId = as;
+      return app.request(`/v1/clubs/${CLUB_A.id}/venues/closures`, { method: "POST", headers: { authorization: "Bearer test-jwt", "content-type": "application/json" }, body: JSON.stringify(body) });
+    };
+
+    expect((await post("anis")).status).toBe(403);
+    const created = await post("admin");
+    expect(created.status).toBe(201);
+    const { closure } = (await created.json()) as { closure: { id: string; conflicts: { kind: string; teamName: string | null }[] } };
+    // Après-midi fermé : l'entraînement de 18 h est en conflit ; le match de 11 h (matin) et le match à l'extérieur non.
+    expect(closure).toMatchObject({ venueName: "COMPLEXE SPORTIF DU LIDO", period: "afternoon", reason: "Tournoi de handball", conflicts: [{ kind: "TRAINING", teamName: "U15" }] });
+
+    currentUserId = "anis";
+    const list = await app.request(`/v1/clubs/${CLUB_A.id}/venues/closures`, { headers: { authorization: "Bearer test-jwt" } });
+    expect(((await list.json()) as { closures: unknown[] }).closures).toHaveLength(1);
+
+    currentUserId = "admin";
+    const del = await app.request(`/v1/clubs/${CLUB_A.id}/venues/closures/${closure.id}`, { method: "DELETE", headers: { authorization: "Bearer test-jwt" } });
+    expect(del.status).toBe(200);
+    expect(state.venueClosures).toHaveLength(0);
+  });
+
+  it("indisponibilité : journée entière en conflit avec le match à domicile ; dates incohérentes refusées", async () => {
+    const VENUE = "55555555-5555-4555-8555-000000000001";
+    state.clubVenues = [{ id: VENUE, club_id: CLUB_A.id, name: "COMPLEXE SPORTIF DU LIDO", address: null, venue_id: "ffbb-lido", active: true, sort_order: 0 }];
+    state.matches = [{ id: "66666666-6666-4666-8666-000000000001", club_id: CLUB_A.id, team_id: TEAM_U15F, opponent_name: "Montpellier", match_datetime: "2099-11-07T10:00:00Z", venue_id: "ffbb-lido", venue_raw_label: null, is_home: true, status: "scheduled" }] as never;
+    const send = (payload: unknown) => app.request(`/v1/clubs/${CLUB_A.id}/venues/closures`, { method: "POST", headers: { authorization: "Bearer test-jwt", "content-type": "application/json" }, body: JSON.stringify(payload) });
+    const res = await send({ clubVenueId: VENUE, startDate: "2099-11-06", endDate: "2099-11-08" });
+    expect(((await res.json()) as { closure: unknown }).closure).toMatchObject({ period: "day", conflicts: [{ kind: "MATCH", opponentName: "Montpellier" }] });
+    expect((await send({ clubVenueId: VENUE, startDate: "2099-11-08", endDate: "2099-11-06" })).status).toBe(400);
+  });
 });
