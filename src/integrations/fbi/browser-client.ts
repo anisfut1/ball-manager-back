@@ -2719,11 +2719,23 @@ export class BrowserFbiClient {
   private async navigateToDerogationSearchScreen(page: Page, etat: "tousLesEtats" | "creer" = "tousLesEtats"): Promise<void> {
     const targetUrl = `${this.baseUrl}/rechercherDerogation.fbi`;
 
-    try {
-      await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
-      await this.settle(page);
-    } catch (error) {
-      throw new FbiError(`Écran de recherche des dérogations injoignable : ${targetUrl}`, "NAVIGATION_FAILED", error);
+    // Deux essais (constaté le 2026-10-22 via le relais OVH : connexion
+    // réussie puis écran de recherche injoignable au premier chargement).
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
+        await this.settle(page);
+        lastError = undefined;
+        break;
+      } catch (error) {
+        lastError = error;
+        if (attempt < 2) await page.waitForTimeout(3_000).catch(() => undefined);
+      }
+    }
+    if (lastError) {
+      const cause = lastError instanceof Error ? lastError.message.split("\n")[0].slice(0, 160) : String(lastError).slice(0, 160);
+      throw new FbiError(`Écran de recherche des dérogations injoignable : ${targetUrl} (${cause})`, "NAVIGATION_FAILED", lastError);
     }
 
     /**
