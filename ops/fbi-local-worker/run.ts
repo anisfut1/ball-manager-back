@@ -55,7 +55,9 @@ process.env.PUSH_QUEUE_ONLY = "1";
 
 // Cadence (2026-10-07, après les premières passes : ~3 s de travail réel par
 // feuille, la pause de 20 s dominait) — même session, aucune connexion en plus.
-const INTERVAL_MIN = Number(process.env.FBI_LOCAL_INTERVAL_MIN || 5);
+// Passes espacées de 15 min (2026-10-22, au lieu de 5) : les écritures
+// attendues dans l'app restent surveillées toutes les 4 s (base seule).
+const INTERVAL_MIN = Number(process.env.FBI_LOCAL_INTERVAL_MIN || 15);
 const MAX_JOBS_PER_PASS = Number(process.env.FBI_LOCAL_MAX_JOBS_PER_PASS || 10);
 const PAUSE_BETWEEN_JOBS_MS = Number(process.env.FBI_LOCAL_PAUSE_MS || 5_000);
 const RELOGIN = process.env.FBI_LOCAL_RELOGIN !== "never";
@@ -235,6 +237,10 @@ async function pass(): Promise<void> {
     .eq("club_id", clubId)
     .lte("scheduled_at", new Date().toISOString());
   if (error) return record("pass_skipped", { error: error.message }, `lecture des jobs impossible : ${error.message}`);
+  // Rien de dû : aucun accès à FBI, même pas la vérification (même règle que
+  // le cron Vercel ; 2026-10-22, « intervalles de 5 min, ça va me faire ban ») —
+  // la session est revérifiée à la prochaine passe qui a du travail.
+  if (!due || due.length === 0) return record("idle", {}, `aucun job FBI à traiter, aucun accès à FBI${session ? " (session gardée ouverte)" : ""}`);
 
   const reachability = await checkFbiReachability(undefined);
   await recordFbiReachability(supabase, reachability);
@@ -252,8 +258,6 @@ async function pass(): Promise<void> {
       return;
     }
   }
-
-  if (!due || due.length === 0) return record("idle", {}, `aucun job FBI à traiter${session ? " (session gardée ouverte)" : ""}`);
 
   if (!session) {
     if (expiredOnce && !RELOGIN) return record("pass_skipped", {}, "session expirée et FBI_LOCAL_RELOGIN=never : aucune nouvelle connexion");
