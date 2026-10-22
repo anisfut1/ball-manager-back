@@ -35,6 +35,7 @@ export const IssueDtoSchema = z
       "fbi_schedule_missing_in_fbi",
       "venue_time_conflict",
       "team_double_booking",
+      "venue_closure_conflict",
     ]),
     severity: z.enum(["warning", "error"]),
     /**

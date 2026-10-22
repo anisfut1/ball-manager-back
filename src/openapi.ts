@@ -96,7 +96,7 @@ import { PublicPlayerProfileDtoSchema } from "./contracts/public-players.js";
 import { TableLeaderboardDtoSchema } from "./contracts/tables.js";
 import { PasswordResetDtoSchema } from "./modules/account/routes.js";
 import { ClubMemberListDtoSchema, InviteMemberDtoSchema, SetMemberRolesDtoSchema } from "./contracts/members.js";
-import { ClubVenueAdminDtoSchema, ClubVenueListDtoSchema, UpdateClubVenueDtoSchema } from "./contracts/club-venues.js";
+import { ClubVenueAdminDtoSchema, ClubVenueListDtoSchema, CreateVenueClosureDtoSchema, UpdateClubVenueDtoSchema, VenueClosureDtoSchema, VenueClosureListDtoSchema } from "./contracts/club-venues.js";
 import { PoolStandingsListDtoSchema } from "./contracts/standings.js";
 
 /**
@@ -1273,6 +1273,31 @@ registry.registerPath({
   security: bearerAuth,
   request: { params: clubIdParam.extend({ venueId: z.string().uuid() }), body: { content: { "application/json": { schema: UpdateClubVenueDtoSchema } } } },
   responses: { 200: jsonResponse("Gymnase mis à jour", z.object({ venue: ClubVenueAdminDtoSchema })), ...errorResponses, ...validationResponses },
+});
+
+/** Indisponibilités des gymnases (à venir et en cours) et leurs conflits avec les matchs à domicile et les entraînements. */
+registry.registerPath({
+  method: "get",
+  path: "/v1/clubs/{clubId}/venues/closures",
+  security: bearerAuth,
+  request: { params: clubIdParam },
+  responses: { 200: jsonResponse("Indisponibilités des gymnases", VenueClosureListDtoSchema), ...errorResponses },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/v1/clubs/{clubId}/venues/closures",
+  security: bearerAuth,
+  request: { params: clubIdParam, body: { content: { "application/json": { schema: CreateVenueClosureDtoSchema } } } },
+  responses: { 201: jsonResponse("Indisponibilité ajoutée", z.object({ closure: VenueClosureDtoSchema })), ...errorResponses, ...validationResponses },
+});
+
+registry.registerPath({
+  method: "delete",
+  path: "/v1/clubs/{clubId}/venues/closures/{closureId}",
+  security: bearerAuth,
+  request: { params: clubIdParam.extend({ closureId: z.string().uuid() }) },
+  responses: { 200: jsonResponse("Indisponibilité supprimée", z.object({ deleted: z.boolean() })), ...errorResponses },
 });
 
 

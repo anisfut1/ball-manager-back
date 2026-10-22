@@ -310,6 +310,7 @@ export interface FakeClubSupabaseState {
   devicePushTokens: FakeRow[];
   notificationOutbox: FakeRow[];
   issueDismissals: FakeRow[];
+  venueClosures: FakeRow[];
   /** Stockage : chemins supprimés par bucket, et erreur à simuler sur `remove`. */
   storageRemovals: { bucket: string; paths: string[] }[];
   storageRemoveError: string | null;
@@ -369,6 +370,7 @@ export function makeFakeClubSupabaseState(overrides: Partial<FakeClubSupabaseSta
     devicePushTokens: [],
     notificationOutbox: [],
     issueDismissals: [],
+    venueClosures: [],
     storageRemovals: [],
     storageRemoveError: null,
     deleteLicencieAccessCalls: [],
@@ -1169,6 +1171,8 @@ export function buildFakeClubSupabase(state: FakeClubSupabaseState): any {
           return mutableTable(() => state.notificationOutbox, (rows) => (state.notificationOutbox = rows), {
             defaults: () => ({ status: "pending", attempts: 0, last_error: null, devices_sent: 0, created_at: new Date().toISOString(), next_attempt_at: new Date().toISOString(), sent_at: null }),
           });
+        case "club_venue_closures":
+          return mutableTable(() => state.venueClosures, (rows) => (state.venueClosures = rows), { defaults: () => ({ id: randomUUID(), period: "day", reason: null, created_by: null, created_at: fakeNow() }) });
         case "issue_dismissals":
           return mutableTable(() => state.issueDismissals, (rows) => (state.issueDismissals = rows), {
             defaults: () => ({ dismissed_by: null, dismissed_at: fakeNow() }),

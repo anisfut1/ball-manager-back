@@ -397,4 +397,19 @@ describe("GET /:clubId/issues", () => {
     expect(after.issues).toHaveLength(1);
     expect(after.issues[0].key).toBe(before.issues[1].key);
   });
+
+  it("signale un match à domicile prévu pendant une indisponibilité de gymnase (2026-10-22)", async () => {
+    state.clubVenues = [{ id: "cv-clavel", club_id: CLUB_A.id, name: "GYMNASE CLAVEL", address: null, venue_id: null, active: true, sort_order: 0 }];
+    state.venueClosures = [{ id: "closure-1", club_id: CLUB_A.id, club_venue_id: "cv-clavel", start_date: "2026-10-10", end_date: "2026-10-11", period: "morning", reason: "Travaux" }];
+    state.matches = [
+      { id: "match-u9", club_id: CLUB_A.id, numero: "1", journee: null, match_datetime: "2026-10-11T09:00:00.000Z", is_home: true, opponent_name: "U9 adversaire", venue_raw_label: "GYMNASE CLAVEL", score_home: null, score_away: null, status: "scheduled", emarque_status: "not_applicable", team_id: null },
+      { id: "match-pm", club_id: CLUB_A.id, numero: "2", journee: null, match_datetime: "2026-10-11T14:00:00.000Z", is_home: true, opponent_name: "Après-midi, salle ouverte", venue_raw_label: "GYMNASE CLAVEL", score_home: null, score_away: null, status: "scheduled", emarque_status: "not_applicable", team_id: null },
+    ];
+
+    const body = await (await request(`/${CLUB_A.id}/issues`)).json();
+    const closureIssues = body.issues.filter((i: { type: string }) => i.type === "venue_closure_conflict");
+    expect(closureIssues).toHaveLength(1);
+    expect(closureIssues[0]).toMatchObject({ integration: "scheduling", severity: "error", matchId: "match-u9", message: "GYMNASE CLAVEL est indisponible du 10 octobre au 11 octobre (le matin — Travaux) : 1 match à domicile prévu." });
+    expect(closureIssues[0].relatedMatches.map((m: { matchId: string }) => m.matchId)).toEqual(["match-u9"]);
+  });
 });

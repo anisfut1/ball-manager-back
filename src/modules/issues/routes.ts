@@ -8,6 +8,8 @@ import type { QualityWarningDto } from "../../contracts/emarque.js";
 import { currentSeasonStart } from "../../season.js";
 import { detectTeamConflicts, detectVenueConflicts, groupConflicts, MATCH_SLOT_MINUTES } from "./venue-conflicts.js";
 import { hasRole } from "../../tenancy/roles.js";
+import { localDateKey } from "../../util/timezone.js";
+import { CLOSURE_COLUMNS, withConflicts, type ClosureRow } from "../club-venues/closures.js";
 
 export const issuesRouter = new Hono<AppEnv>();
 
@@ -307,6 +309,40 @@ issuesRouter.get("/", async (c) => {
     detectTeamConflicts(datedMatches.map((m) => ({ id: m.id, numero: m.numero, opponentName: m.opponent_name, matchDatetime: m.match_datetime, teamId: m.team_id }))),
   ).map((ids) => toConflictIssue(ids, "team"));
 
+  // Matchs à domicile prévus pendant une indisponibilité de gymnase (2026-10-22).
+  const PERIOD_LABELS = { day: "toute la journée", morning: "le matin", afternoon: "l'après-midi" } as const;
+  const { data: closureRows, error: closuresError } = await supabase.from("club_venue_closures").select(CLOSURE_COLUMNS).eq("club_id", club.id).gte("end_date", localDateKey(new Date(), club.timezone));
+  if (closuresError) throw new Error(`Lecture des indisponibilités de gymnase échouée : ${closuresError.message}`);
+  const frDate = (key: string) => new Date(`${key}T12:00:00Z`).toLocaleDateString("fr-FR", { day: "numeric", month: "long", timeZone: "UTC" });
+  const closureIssues: IssueDto[] = (await withConflicts(supabase, club.id, club.timezone, (closureRows ?? []) as ClosureRow[])).flatMap((closure) => {
+    const related = closure.conflicts
+      .filter((conflict) => conflict.kind === "MATCH")
+      .map((conflict) => matchById.get(conflict.id))
+      .filter((m): m is NonNullable<typeof m> => Boolean(m));
+    if (related.length === 0) return [];
+    const first = related[0]!;
+    const when = closure.startDate === closure.endDate ? `le ${frDate(closure.startDate)}` : `du ${frDate(closure.startDate)} au ${frDate(closure.endDate)}`;
+    return [
+      {
+        key: `closure:${closure.id}:${related.map((m) => `${m.id}@${new Date(m.match_datetime).toISOString()}`).join(",")}`,
+        matchId: first.id,
+        numero: first.numero,
+        opponentName: first.opponent_name,
+        matchDatetime: first.match_datetime,
+        integration: "scheduling",
+        type: "venue_closure_conflict",
+        severity: "error",
+        status: "open",
+        message: `${closure.venueName} est indisponible ${when} (${PERIOD_LABELS[closure.period]}${closure.reason ? ` — ${closure.reason}` : ""}) : ${related.length} match${related.length > 1 ? "s" : ""} à domicile prévu${related.length > 1 ? "s" : ""}.`,
+        technicalCode: "VENUE_CLOSURE_CONFLICT",
+        qualityWarnings: [],
+        relatedMatches: related.map(toRelated),
+        createdAt: null,
+        resolvedAt: null,
+      },
+    ];
+  });
+
   const { data: dismissals, error: dismissalsError } = await supabase.from("issue_dismissals").select("issue_key").eq("club_id", club.id);
   if (dismissalsError) throw new Error(`Lecture des anomalies retirées échouée : ${dismissalsError.message}`);
   const dismissed = new Set((dismissals ?? []).map((d) => d.issue_key));
@@ -326,7 +362,7 @@ issuesRouter.get("/", async (c) => {
     if (m?.match_datetime) issue.relatedMatches = [toRelated({ ...m, match_datetime: m.match_datetime })];
   }
 
-  const issues = [...venueConflictIssues, ...teamConflictIssues, ...emarqueIssues, ...fbiScheduleIssues].filter((issue) => !dismissed.has(issue.key));
+  const issues = [...closureIssues, ...venueConflictIssues, ...teamConflictIssues, ...emarqueIssues, ...fbiScheduleIssues].filter((issue) => !dismissed.has(issue.key));
   return c.json({ issues });
 });
 
