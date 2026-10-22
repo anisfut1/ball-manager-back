@@ -12,8 +12,8 @@
 /** Un match occupe 120 minutes : 15:00 → [15:00 ; 17:00). */
 export const DEFAULT_MATCH_DURATION_MINUTES = 120;
 
-/** Pas des heures de départ proposées (demandes de dérogation) : 13:00, 14:00, 15:00… */
-export const DEFAULT_SLOT_STEP_MINUTES = 60;
+/** Pas des heures de départ proposées (demandes de dérogation) : 13:00, 13:30, 14:00… (demi-heures, retour du club 2026-10-22). */
+export const DEFAULT_SLOT_STEP_MINUTES = 30;
 
 export interface TimeWindow {
   start: Date;
