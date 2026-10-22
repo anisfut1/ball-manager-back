@@ -1,6 +1,6 @@
 import { OpenAPIRegistry, OpenApiGeneratorV3 } from "@asteasolutions/zod-to-openapi";
 import { AddSessionPeopleDtoSchema, AuthCodeDtoSchema, CreateAuthCodeDtoSchema, CreateDeviceSessionDtoSchema, DeviceSessionDtoSchema, ExchangeAuthCodeDtoSchema,
-  PutPushTokenDtoSchema, PushTestResultDtoSchema, PublicClubListDtoSchema, SessionInfoDtoSchema, WebExchangeDtoSchema } from "./contracts/device-auth.js";
+  PutPushTokenDtoSchema, PushTestResultDtoSchema, PublicClubListDtoSchema, SessionInfoDtoSchema, WebExchangeDtoSchema, AdminSessionDtoSchema, CreateAdminSessionDtoSchema, RefreshAdminSessionDtoSchema } from "./contracts/device-auth.js";
 import { z } from "./contracts/zod.js";
 import { ClubDtoSchema, TeamDtoSchema, UpdateClubDtoSchema, CreateTeamDtoSchema, UpdateTeamDtoSchema } from "./contracts/clubs.js";
 import { MatchListItemDtoSchema, MatchDetailsDtoSchema, MatchesQueryDtoSchema, MatchesPaginationDtoSchema } from "./contracts/matches.js";
@@ -1362,6 +1362,8 @@ for (const space of ["club", "public"] as const) {
   registry.registerPath({ method: "post", path: `${base}/session/push-test`, security: deviceBearer, request: { params: clubSlugParam }, responses: { 200: jsonResponse("Notification de test vers cet iPhone seulement (sent / not_configured / no_token / failed)", PushTestResultDtoSchema), ...errorResponses } });
   registry.registerPath({ method: "delete", path: `${base}/session/push-token`, security: deviceBearer, request: { params: clubSlugParam }, responses: { 204: { description: "Plus de notifications de ce club sur cet appareil" }, ...errorResponses } });
   registry.registerPath({ method: "post", path: `${base}/codes`, request: { params: clubSlugParam, body: jsonBody(CreateAuthCodeDtoSchema) }, responses: { 201: jsonResponse("Code d'autorisation (5 min, usage unique, lié au PKCE)", AuthCodeDtoSchema), ...errorResponses } });
+  registry.registerPath({ method: "post", path: `${base}/admin-session`, security: deviceBearer, request: { params: clubSlugParam, body: jsonBody(CreateAdminSessionDtoSchema) }, responses: { 201: jsonResponse("Session d'administration (compte club_admin du site), pour les routes /v1/clubs/{clubId}/…", AdminSessionDtoSchema), ...errorResponses, ...validationResponses } });
+  registry.registerPath({ method: "post", path: `${base}/admin-session/refresh`, security: deviceBearer, request: { params: clubSlugParam, body: jsonBody(RefreshAdminSessionDtoSchema) }, responses: { 200: jsonResponse("Session d'administration rafraîchie (rôle revérifié)", AdminSessionDtoSchema), ...errorResponses, ...validationResponses } });
   registry.registerPath({ method: "post", path: `${base}/token`, request: { params: clubSlugParam, body: jsonBody(ExchangeAuthCodeDtoSchema) }, responses: { 201: jsonResponse("Session d'appareil (ios)", DeviceSessionDtoSchema), 200: jsonResponse("Liens personnels pour la session web (web, lien de connexion)", WebExchangeDtoSchema), ...errorResponses } });
 }
 // Lot 4 : page Équipe.

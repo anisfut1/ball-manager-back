@@ -7,7 +7,9 @@ import { clientIp, hitRateLimit } from "../../security/rate-limit.js";
 import { parse } from "../trainings/routes.js";
 import { decryptPublicToken } from "../public-tables/personal-link.js";
 import type { EncryptedPayload } from "../../security/crypto.js";
-import { AddSessionPeopleDtoSchema, CreateAuthCodeDtoSchema, CreateDeviceSessionDtoSchema, ExchangeAuthCodeDtoSchema, PutPushTokenDtoSchema } from "../../contracts/device-auth.js";
+import { AddSessionPeopleDtoSchema, CreateAdminSessionDtoSchema, CreateAuthCodeDtoSchema, CreateDeviceSessionDtoSchema, ExchangeAuthCodeDtoSchema, PutPushTokenDtoSchema, RefreshAdminSessionDtoSchema } from "../../contracts/device-auth.js";
+import { createAnonSupabaseClient } from "../../db/client.js";
+import { createAdminSession, refreshAdminSession, type PasswordAuth } from "./admin-session.js";
 import { deleteLicencieAccess } from "../account-deletion/service.js";
 import { registerPushToken, removePushToken, sendTestPush } from "../push/service.js";
 import {
@@ -193,4 +195,26 @@ deviceAuthRouter.post("/token", async (c) => {
 
   const session = await createDeviceSession(db, club.id, proven, { platform: "ios", appVersion: body.appVersion, deviceLabel: body.deviceLabel });
   return c.json({ sessionSecret: session.secret, expiresAt: session.expiresAt, people: await peopleOf(db, club.id, proven.map((p) => p.licencieId)), redirectPath: consumed.redirectPath }, 201, NO_STORE);
+});
+
+/**
+ * Administration du club dans l'app (2026-10-22) : connexion avec le compte
+ * du site, réservée aux comptes `club_admin` du club — voir admin-session.ts.
+ * Session d'appareil du club exigée en plus (seule l'app de ce club essaie),
+ * débit limité par adresse IP.
+ */
+const passwordAuth = (): PasswordAuth => createAnonSupabaseClient().auth as unknown as PasswordAuth;
+
+deviceAuthRouter.post("/admin-session", async (c) => {
+  limit(c, "admin-login", 5);
+  await requireSession(c);
+  const body = await parse(CreateAdminSessionDtoSchema, c);
+  return c.json(await createAdminSession(c.get("supabase"), passwordAuth(), c.get("publicClub").id, body.email, body.password), 201, NO_STORE);
+});
+
+deviceAuthRouter.post("/admin-session/refresh", async (c) => {
+  limit(c, "admin-refresh", 30);
+  await requireSession(c);
+  const body = await parse(RefreshAdminSessionDtoSchema, c);
+  return c.json(await refreshAdminSession(c.get("supabase"), passwordAuth(), c.get("publicClub").id, body.refreshToken), 200, NO_STORE);
 });

@@ -75,3 +75,27 @@ export const PushTestResultDtoSchema = z
     reason: z.string().nullable(),
   })
   .openapi("PushTestResultDto");
+
+/**
+ * Administration du club dans l'app (2026-10-22) : connexion avec le COMPTE
+ * du site (email + mot de passe), réservée aux comptes `club_admin` du club.
+ * La session renvoyée sert aux routes `/v1/clubs/{clubId}/…` (Bearer), comme
+ * sur le site — jamais aux routes publiques.
+ */
+export const CreateAdminSessionDtoSchema = z
+  .object({ email: z.string().trim().email().max(254), password: z.string().min(1).max(200) })
+  .strict()
+  .openapi("CreateAdminSessionDto");
+
+export const RefreshAdminSessionDtoSchema = z.object({ refreshToken: z.string().min(8).max(2048) }).strict().openapi("RefreshAdminSessionDto");
+
+export const AdminSessionDtoSchema = z
+  .object({
+    accessToken: z.string(),
+    refreshToken: z.string(),
+    /** Expiration du jeton d'accès (ISO) : l'app rafraîchit avant. */
+    expiresAt: z.string(),
+    clubId: z.string().uuid(),
+    email: z.string().nullable(),
+  })
+  .openapi("AdminSessionDto");
