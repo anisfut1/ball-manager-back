@@ -10,11 +10,25 @@ import { createAuthCode, LOGIN_LINK_CODE_TTL_MS, moveGrantsToToken, sanitizeRedi
  * d'autorisation PKCE (docs/MOBILE_AUTH.md). Données fictives.
  */
 let state: FakeClubSupabaseState;
+/** Supabase Auth simulé (connexion admin) : comptes fictifs « email → { mot de passe, userId } ». */
+let accounts: Record<string, { password: string; userId: string }> = {};
+const fakeAuth = {
+  signInWithPassword: async ({ email, password }: { email: string; password: string }) => {
+    const account = accounts[email];
+    if (!account || account.password !== password) return { data: { session: null }, error: { message: "Invalid login credentials" } };
+    return { data: { session: { access_token: `jwt-${account.userId}`, refresh_token: `refresh-${account.userId}`, expires_at: 1_900_000_000, user: { id: account.userId, email } } }, error: null };
+  },
+  refreshSession: async ({ refresh_token }: { refresh_token: string }) => {
+    const entry = Object.entries(accounts).find(([, a]) => `refresh-${a.userId}` === refresh_token);
+    if (!entry) return { data: { session: null }, error: { message: "Invalid Refresh Token" } };
+    return { data: { session: { access_token: `jwt2-${entry[1].userId}`, refresh_token: `refresh-${entry[1].userId}`, expires_at: 1_900_000_000, user: { id: entry[1].userId, email: entry[0] } } }, error: null };
+  },
+};
 
 vi.mock("../../db/client.js", () => ({
   createUserSupabaseClient: () => buildFakeClubSupabase(state),
   createServiceSupabaseClient: () => buildFakeClubSupabase(state),
-  createAnonSupabaseClient: () => ({}),
+  createAnonSupabaseClient: () => ({ auth: fakeAuth }),
 }));
 
 const { app } = await import("../../app.js");
@@ -234,3 +248,56 @@ describe("liste des clubs (choix du club dans l'app)", () => {
     expect(list.map((c) => c.slug)).toEqual(["agde", "sete"]);
   });
 });
+
+describe("administration du club dans l'app (compte du site, club_admin seulement)", () => {
+  const M_ADMIN = "55555555-5555-4555-8555-00000000000a";
+  const M_COACH = "55555555-5555-4555-8555-00000000000b";
+  beforeEach(() => {
+    accounts = { "admin@example.test": { password: "bon-mot-de-passe", userId: "user-admin" }, "coach@example.test": { password: "bon-mot-de-passe", userId: "user-coach" } };
+    state.memberships = [
+      { id: M_ADMIN, club_id: CLUB_A.id, user_id: "user-admin", status: "active" },
+      { id: M_COACH, club_id: CLUB_A.id, user_id: "user-coach", status: "active" },
+    ] as never;
+    state.roles = [
+      { membership_id: M_ADMIN, role: "club_admin", scope_team_id: null },
+      { membership_id: M_COACH, role: "coach", scope_team_id: null },
+    ] as never;
+  });
+
+  // Adresse distincte par test : la limite de débit (5 essais / min / IP) est globale au processus.
+  let ip = 0;
+  beforeEach(() => void (ip += 1));
+  const login = async (secret: string | null, email: string, password = "bon-mot-de-passe", slug = "club-a") =>
+    pub(slug, "/auth/admin-session", { method: "POST", headers: { "x-forwarded-for": `198.51.100.${ip}`, ...(secret ? bearer(secret) : {}) }, body: { email, password } });
+
+  it("compte club_admin : session pour les routes /v1/clubs, rafraîchissable", async () => {
+    const { sessionSecret } = await bootstrap();
+    const res = await login(sessionSecret, "admin@example.test");
+    expect(res.status).toBe(201);
+    const body = await json<{ accessToken: string; refreshToken: string; clubId: string; email: string }>(res);
+    expect(body).toMatchObject({ accessToken: "jwt-user-admin", clubId: CLUB_A.id, email: "admin@example.test" });
+    const refreshed = await pub("club-a", "/auth/admin-session/refresh", { method: "POST", headers: bearer(sessionSecret), body: { refreshToken: body.refreshToken } });
+    expect(refreshed.status).toBe(200);
+    expect((await json<{ accessToken: string }>(refreshed)).accessToken).toBe("jwt2-user-admin");
+  });
+
+  it("refus : mauvais mot de passe (401), compte non admin (403), sans session d'appareil (401), autre club (403)", async () => {
+    const { sessionSecret } = await bootstrap();
+    expect((await login(sessionSecret, "admin@example.test", "faux-mot-de-passe")).status).toBe(401);
+    expect((await login(sessionSecret, "coach@example.test")).status).toBe(403);
+    expect((await login(null, "admin@example.test")).status).toBe(401);
+    state.publicTokens.push({ ...state.publicTokens[0]!, id: "tok-b", club_id: CLUB_B.id, token_hash: hashPublicToken("token-clubb-0000") } as never);
+    state.licencies.push({ ...lic("44444444-4444-4444-8444-0000000000b1", "Zoé"), club_id: CLUB_B.id } as never);
+    state.publicTokens[state.publicTokens.length - 1] = { ...state.publicTokens[state.publicTokens.length - 1]!, licencie_id: "44444444-4444-4444-8444-0000000000b1" } as never;
+    const sessionB = await json<{ sessionSecret: string }>(await pub("club-b", "/auth/device-sessions", { method: "POST", body: { tokens: ["token-clubb-0000"], platform: "ios" } }));
+    expect((await login(sessionB.sessionSecret, "admin@example.test", "bon-mot-de-passe", "club-b")).status).toBe(403);
+  });
+
+  it("rôle retiré : le rafraîchissement est refusé", async () => {
+    const { sessionSecret } = await bootstrap();
+    const body = await json<{ refreshToken: string }>(await login(sessionSecret, "admin@example.test"));
+    state.roles = state.roles.filter((r) => r.membership_id !== M_ADMIN);
+    expect((await pub("club-a", "/auth/admin-session/refresh", { method: "POST", headers: bearer(sessionSecret), body: { refreshToken: body.refreshToken } })).status).toBe(403);
+  });
+});
+
