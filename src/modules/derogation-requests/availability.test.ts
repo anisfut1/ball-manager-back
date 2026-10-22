@@ -99,7 +99,9 @@ describe("plusieurs gymnases", () => {
 
     const availability = computeAvailability({ date: SATURDAY, timezone: TZ, rules: RULES, isHome: true, venues: [VENUE_A, VENUE_B], matches, pending: [], targetMatchId: "target", targetTeamId: "team-u15f", now: NOW });
     const slot = (venueId: string, time: string) => availability.venues.find((v) => v.venue.id === venueId)!.candidates.find((c) => c.localStart === time)!;
-    expect(availability.venues[0]!.candidates.map((c) => c.localStart)).toEqual(["13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00"]);
+    // Demi-heures (retour du club, 2026-10-22) : 13:00, 13:30… 21:00.
+    expect(availability.venues[0]!.candidates.map((c) => c.localStart)).toEqual(["13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00"]);
+    expect(slot(VENUE_A.id, "16:30").available).toBe(false); // 16h30–18h30 chevauche 15h–17h
     expect(slot(VENUE_A.id, "14:00").available).toBe(false); // 14h–16h chevauche 15h–17h
     expect(slot(VENUE_A.id, "15:00").available).toBe(false);
     expect(slot(VENUE_A.id, "16:00").available).toBe(false);
