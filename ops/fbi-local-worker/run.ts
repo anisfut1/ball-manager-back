@@ -13,8 +13,8 @@
  *   (`FBI_LOCAL_RELOGIN=never` pour l'interdire) ;
  * - FBI injoignable (requête anonyme avant chaque passe) : passe sautée,
  *   session conservée ;
- * - prise de relais : bail de 30 min sur `fbi_paused_until`, renouvelé à
- *   chaque passe — Vercel ne se connecte plus à FBI ; libéré à l'arrêt
+ * - prise de relais : bail de 5 min sur `fbi_paused_until`, renouvelé chaque
+ *   minute et avant chaque job — Vercel ne se connecte plus à FBI ; libéré à l'arrêt
  *   (Ctrl+C), expiré seul si le poste s'éteint.
  *
  * Tous les jobs FBI du club passent par CETTE session : feuilles e-Marque,
@@ -61,7 +61,16 @@ const INTERVAL_MIN = Number(process.env.FBI_LOCAL_INTERVAL_MIN || 15);
 const MAX_JOBS_PER_PASS = Number(process.env.FBI_LOCAL_MAX_JOBS_PER_PASS || 10);
 const PAUSE_BETWEEN_JOBS_MS = Number(process.env.FBI_LOCAL_PAUSE_MS || 5_000);
 const RELOGIN = process.env.FBI_LOCAL_RELOGIN !== "never";
-const LEASE_MIN = 30;
+/**
+ * Bail FBI court, renouvelé chaque minute tant que le worker tourne (retour du
+ * club, 2026-10-22 : Mac en veille de 18:02 à 18:33, envois de dérogations
+ * restés en attente parce que le bail de 30 min courait encore). Poste
+ * endormi ou worker arrêté : Vercel reprend la main en 5 min au plus.
+ */
+const LEASE_MIN = 5;
+const LEASE_RENEW_MS = 60_000;
+/** Bail FFBB inchangé (synchro horaire, pas d'envoi attendu par quelqu'un). */
+const FFBB_LEASE_MIN = 30;
 const WRITE_POLL_MS = Number(process.env.FBI_LOCAL_WRITE_POLL_MS || 4_000);
 const BASE_URL = process.env.FBI_BASE_URL || "https://extranet.ffbb.com/fbi";
 
@@ -111,7 +120,7 @@ async function setFfbbLease(until: Date | null): Promise<void> {
 
 /** Clubs dont la synchro FFBB est due (même planification que Vercel, pause de 6 h après un refus 403). */
 async function syncFfbbIfDue(): Promise<void> {
-  await setFfbbLease(new Date(Date.now() + LEASE_MIN * 60_000));
+  await setFfbbLease(new Date(Date.now() + FFBB_LEASE_MIN * 60_000));
   try {
     const result = await syncAllDueClubs(supabase, new FfbbPublicProvider());
     if (result.clubsDue > 0) record("ffbb_sync", { ...result }, `synchro FFBB : ${result.clubsSynced} club(s) à jour, ${result.clubsFailed} en erreur`);
@@ -119,6 +128,15 @@ async function syncFfbbIfDue(): Promise<void> {
     const message = error instanceof Error ? error.message.split("\n")[0] : String(error);
     record("ffbb_sync", { error: message }, `synchro FFBB en erreur : ${message}`);
   }
+}
+
+let leaseRenewedAt = 0;
+
+/** Renouvelle le bail FBI au plus une fois par minute (boucle d'attente, avant chaque job). */
+async function renewLease(): Promise<void> {
+  if (Date.now() - leaseRenewedAt < LEASE_RENEW_MS) return;
+  leaseRenewedAt = Date.now();
+  await setLease(new Date(Date.now() + LEASE_MIN * 60_000));
 }
 
 async function setLease(until: Date | null): Promise<void> {
@@ -215,7 +233,8 @@ async function dropSession(): Promise<void> {
 }
 
 async function pass(): Promise<void> {
-  await setLease(new Date(Date.now() + LEASE_MIN * 60_000));
+  leaseRenewedAt = 0;
+  await renewLease();
   // FFBB d'abord : indépendant de FBI (une passe FBI sautée ne bloque pas les matchs).
   if (FFBB_LOCAL) await syncFfbbIfDue();
 
@@ -270,6 +289,7 @@ async function pass(): Promise<void> {
     // Une écriture attendue par quelqu'un passe avant la suite de la passe.
     await processWriteJobs();
     if (!session) break;
+    await renewLease();
     const job = await claimNextJobForClub(supabase, clubId, workerId);
     if (!job) break;
     if (done > 0) await new Promise((resolve) => setTimeout(resolve, PAUSE_BETWEEN_JOBS_MS));
@@ -307,6 +327,7 @@ async function processWriteJobs(): Promise<void> {
       if (lastLogin) return record("write_waiting", { lastLogin }, `envoi FBI en attente : dernière connexion à ${lastLogin.toISOString()} (< 12 min)`);
       if (!(await loginOnce())) return;
     }
+    await renewLease();
     const job = await claimNextFbiWriteJob(supabase, clubId, workerId);
     if (!job || !session) return;
     const outcome = await runJob(job, session);
@@ -408,6 +429,7 @@ for (;;) {
   while (Date.now() < nextPass) {
     await new Promise((resolve) => setTimeout(resolve, WRITE_POLL_MS));
     try {
+      await renewLease();
       await processWriteJobs();
     } catch (error) {
       record("write_error", { error: error instanceof Error ? error.message.split("\n")[0] : String(error) }, `envoi FBI en erreur : ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
