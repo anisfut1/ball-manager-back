@@ -3,9 +3,9 @@ import type { FbiJobRow } from "../../db/types.js";
 import { badRequest, conflict } from "../../api-error.js";
 import { getFbiCredentials } from "../../integrations/fbi/credentials-store.js";
 import { BrowserFbiClient } from "../../integrations/fbi/browser-client.js";
-import { launchServerlessBrowser } from "../../integrations/fbi/browser-launcher.js";
+import { bypassFbiProxyForThisRun, launchServerlessBrowser, resetFbiProxyBypass, resolveFbiProxy } from "../../integrations/fbi/browser-launcher.js";
 import { classifyFbiLoginStatus, FbiError } from "../../integrations/fbi/errors.js";
-import { fbiPausedUntil } from "../../integrations/fbi/fbi-diagnostics.js";
+import { checkFbiReachability, fbiPausedUntil, recordFbiReachability } from "../../integrations/fbi/fbi-diagnostics.js";
 import { getEnv } from "../../config/env.js";
 import { logError } from "../../logger.js";
 import type { SharedFbiSession } from "../../jobs/shared-session.js";
@@ -121,6 +121,22 @@ async function recordLoginOutcome(supabase: DbClient, clubId: string, success: b
 export async function withVercelFbiSession<T>(supabase: DbClient, clubId: string, logLabel: string, logContext: Record<string, unknown>, run: (shared: SharedFbiSession) => Promise<T>): Promise<T> {
   const credentials = await getFbiCredentials(supabase, clubId);
   if (!credentials) throw conflict("Configure d'abord un identifiant/mot de passe FBI.", "FBI_NOT_CONFIGURED");
+  // Relais OVH par moments muet alors que la sortie directe répond (constaté
+  // les 21-22/10, `fbi_reachability_checks`) : même bascule que le passage
+  // planifié — relais, sinon direct, sinon rien n'est envoyé.
+  resetFbiProxyBypass();
+  const proxy = await resolveFbiProxy();
+  let reachability = await checkFbiReachability(proxy);
+  await recordFbiReachability(supabase, reachability);
+  if (!reachability.ok && proxy) {
+    reachability = await checkFbiReachability(undefined);
+    await recordFbiReachability(supabase, reachability);
+    if (reachability.ok) bypassFbiProxyForThisRun();
+  }
+  if (!reachability.ok) {
+    logError(`${logLabel} : FBI injoignable`, null, { clubId, ...logContext, via: reachability.via, detail: reachability.error });
+    throw badRequest(`Connexion FBI impossible : FBI injoignable (${reachability.error ?? `HTTP ${reachability.httpStatus}`}).`);
+  }
   const browser = await launchServerlessBrowser();
   const client = new BrowserFbiClient({ baseUrl: getEnv().FBI_BASE_URL, browser });
   let session: SharedFbiSession["session"];
