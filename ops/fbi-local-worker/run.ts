@@ -314,6 +314,7 @@ async function processWriteJobs(): Promise<void> {
       .eq("club_id", clubId)
       .in("type", ["create_derogation", "respond_derogation"])
       .eq("status", "pending")
+      .lte("scheduled_at", new Date().toISOString())
       .limit(1)
       .maybeSingle();
     if (!waiting) return;

@@ -4,6 +4,7 @@ import { getFbiCredentials } from "../../integrations/fbi/credentials-store.js";
 import { FbiError } from "../../integrations/fbi/errors.js";
 import { logError, logInfo } from "../../logger.js";
 import type { SharedFbiSession } from "../../jobs/shared-session.js";
+import { verifyCreationOnFbi } from "./fbi-verify.js";
 import { assertNoActiveFbiJob } from "./fbi-session-lock.js";
 import { localWorkerHoldsFbi, runOnLocalWorker, withVercelFbiSession } from "./fbi-write-routing.js";
 
@@ -30,7 +31,12 @@ export interface CreateDerogationResult {
   message: string | null;
   /** FBI injoignable AVANT l'enregistrement : rien n'a été envoyé, on peut réessayer sans risque de doublon. */
   notSent?: boolean;
+  /** Envoi incertain et FBI illisible : à revérifier sur FBI (puis renvoyer si rien n'a été enregistré). */
+  verifyLater?: boolean;
 }
+
+export const VERIFY_LATER_MESSAGE =
+  "Envoi incertain et FBI momentanément illisible : Ball Manager vérifie lui-même sur FBI et renverra la demande automatiquement si rien n'a été enregistré — inutile de la renvoyer.";
 
 export const QUEUED_FOR_LOCAL_WORKER_MESSAGE =
   "FBI ne répond pas au serveur (adresse bloquée par FBI). La demande est mise en attente : elle partira automatiquement dès que le poste du club se connectera à FBI — inutile de la renvoyer.";
@@ -96,9 +102,10 @@ export async function createDerogationForClub(supabase: DbClient, input: CreateD
   }
 
   await assertNoActiveFbiJob(supabase, clubId);
+  const sendStartedAt = new Date();
   let result: CreateDerogationResult;
   try {
-    result = await withVercelFbiSession(supabase, clubId, "Création d'une dérogation", { matchId }, (shared) => createDerogationInSession(supabase, shared, params, target));
+    result = await withVercelFbiSession(supabase, clubId, "Création d'une dérogation", { matchId }, (shared) => createDerogationInSession(supabase, shared, params, target, { since: sendStartedAt }));
   } catch (error) {
     // Connexion FBI impossible depuis Vercel : rien n'a été envoyé non plus.
     if (!(error instanceof ApiError && error.message.startsWith("Connexion FBI impossible"))) throw error;
@@ -107,17 +114,21 @@ export async function createDerogationForClub(supabase: DbClient, input: CreateD
 
   // FBI bloque l'adresse de Vercel (2026-10-21, ERR_CONNECTION_TIMED_OUT) :
   // la demande attend le poste du club au lieu d'échouer.
-  if (result.notSent) {
-    await queueForLocalWorker(supabase, { clubId, matchId, params, conversation: options.conversation ?? null });
+  // Envoi incertain et FBI illisible : revérifié sur FBI avant tout renvoi (jamais de doublon).
+  if (result.notSent || result.verifyLater) {
+    await queueForLocalWorker(supabase, { clubId, matchId, params, conversation: options.conversation ?? null, verifyFirst: result.verifyLater === true, since: sendStartedAt });
     if (options.conversation) await noteQueuedForLocalWorker(supabase, clubId, options.conversation);
-    return { outcome: "unknown", message: QUEUED_FOR_LOCAL_WORKER_MESSAGE };
+    return { outcome: "unknown", message: result.verifyLater ? VERIFY_LATER_MESSAGE : QUEUED_FOR_LOCAL_WORKER_MESSAGE };
   }
   if (options.conversation) await noteOfficialResult(supabase, clubId, options.conversation, result, false);
   return result;
 }
 
 /** Envoi mis en file pour le poste du club (jamais en double pour un même match). */
-async function queueForLocalWorker(supabase: DbClient, job: { clubId: string; matchId: string; params: CreateDerogationParams; conversation: OfficialConversation | null }): Promise<void> {
+async function queueForLocalWorker(
+  supabase: DbClient,
+  job: { clubId: string; matchId: string; params: CreateDerogationParams; conversation: OfficialConversation | null; verifyFirst?: boolean; since?: Date },
+): Promise<void> {
   const { data: pending } = await supabase
     .from("fbi_jobs")
     .select("id")
@@ -128,7 +139,7 @@ async function queueForLocalWorker(supabase: DbClient, job: { clubId: string; ma
     .limit(1)
     .maybeSingle();
   if (pending) return;
-  const { error } = await supabase.from("fbi_jobs").insert({ club_id: job.clubId, match_id: job.matchId, type: "create_derogation", payload: { params: job.params, conversation: job.conversation }, max_attempts: 1 });
+  const { error } = await supabase.from("fbi_jobs").insert({ club_id: job.clubId, match_id: job.matchId, type: "create_derogation", payload: { params: job.params, conversation: job.conversation, verifyFirst: job.verifyFirst ?? false, since: (job.since ?? new Date()).toISOString() }, max_attempts: 1 });
   if (error) throw new Error(`Mise en attente de l'envoi FBI échouée : ${error.message}`);
 }
 
@@ -162,7 +173,76 @@ async function loadVenueName(supabase: DbClient, clubId: string, clubVenueId: st
  * L'écriture elle-même, dans une session FBI déjà ouverte : celle du worker
  * du poste du club, ou celle ouverte par Vercel le temps de l'envoi.
  */
-export async function createDerogationInSession(supabase: DbClient, shared: SharedFbiSession, params: CreateDerogationParams, target?: CreateTarget): Promise<CreateDerogationResult> {
+export async function createDerogationInSession(
+  supabase: DbClient,
+  shared: SharedFbiSession,
+  params: CreateDerogationParams,
+  target?: CreateTarget,
+  options: { since?: Date } = {},
+): Promise<CreateDerogationResult> {
+  const since = options.since ?? new Date();
+  const result = await createDerogationInSessionUnverified(supabase, shared, params, target);
+  // Envoi incertain (coupure PENDANT l'enregistrement) : relu sur FBI tout de suite, jamais laissé à la personne.
+  return result.outcome === "unknown" && !result.notSent ? settleUncertainCreation(supabase, shared, params, target, since) : result;
+}
+
+/**
+ * Envoi repris plus tard (job en file) : quand le premier essai était
+ * incertain, FBI est relu AVANT de renvoyer — jamais de doublon.
+ */
+export async function createDerogationWithVerification(
+  supabase: DbClient,
+  shared: SharedFbiSession,
+  params: CreateDerogationParams,
+  options: { since: Date; verifyFirst: boolean },
+): Promise<CreateDerogationResult> {
+  if (options.verifyFirst) {
+    const target = await loadCreateTarget(supabase, params.clubId, params.matchId);
+    const verification = await verifyCreationOnFbi(shared, target.numero, target.division, options.since);
+    if (verification === "sent") return recordVerifiedCreation(supabase, params);
+    if (verification === "unknown") return { outcome: "unknown", message: VERIFY_LATER_MESSAGE, verifyLater: true };
+    return createDerogationInSession(supabase, shared, params, target, { since: options.since });
+  }
+  return createDerogationInSession(supabase, shared, params, undefined, { since: options.since });
+}
+
+async function settleUncertainCreation(supabase: DbClient, shared: SharedFbiSession, params: CreateDerogationParams, target: CreateTarget | undefined, since: Date): Promise<CreateDerogationResult> {
+  const resolved = target ?? (await loadCreateTarget(supabase, params.clubId, params.matchId).catch(() => null));
+  const verification = resolved ? await verifyCreationOnFbi(shared, resolved.numero, resolved.division, since) : "unknown";
+  logInfo("Création d'une dérogation FBI : envoi incertain, relu sur FBI", { clubId: params.clubId, matchId: params.matchId, verification });
+  if (verification === "sent") return recordVerifiedCreation(supabase, params);
+  if (verification === "absent") {
+    return { outcome: "unknown", message: "Envoi interrompu ; vérifié sur FBI : rien n'a été enregistré. La demande est renvoyée automatiquement.", notSent: true };
+  }
+  return { outcome: "unknown", message: VERIFY_LATER_MESSAGE, verifyLater: true };
+}
+
+/** FBI relu : la dérogation est bien enregistrée — tracée comme un succès. */
+async function recordVerifiedCreation(supabase: DbClient, params: CreateDerogationParams): Promise<CreateDerogationResult> {
+  await supabase
+    .from("fbi_derogation_creations")
+    .insert({
+      club_id: params.clubId,
+      match_id: params.matchId,
+      motif: params.motif,
+      modifier_date: params.modifierDate,
+      date_derogation: params.dateDerogation,
+      modifier_horaire: params.modifierHoraire,
+      horaire: params.horaire,
+      inverser_rencontre: params.inverserRencontre,
+      inverser_equipe: params.inverserEquipe,
+      submitted_by: params.submittedBy,
+      outcome: "success",
+      fbi_message: "Envoi incertain, vérifié sur FBI : dérogation bien enregistrée.",
+    })
+    .then(
+      () => undefined,
+      () => undefined,
+    );
+  return { outcome: "success", message: null };
+}
+
+async function createDerogationInSessionUnverified(supabase: DbClient, shared: SharedFbiSession, params: CreateDerogationParams, target?: CreateTarget): Promise<CreateDerogationResult> {
   try {
     return await createDerogationInSessionOrThrow(supabase, shared, params, target);
   } catch (error) {
@@ -173,7 +253,7 @@ export async function createDerogationInSession(supabase: DbClient, shared: Shar
     const detail = error instanceof Error ? error.message.split("\n")[0].slice(0, 300) : String(error);
     // Page de recherche ou formulaire injoignable : toujours AVANT le clic sur « Enregistrer ».
     const notSent = error instanceof FbiError && error.code === "NAVIGATION_FAILED";
-    const message = notSent ? `Envoi FBI interrompu avant l'enregistrement (rien n'a été envoyé) : ${detail}` : `Envoi FBI interrompu : ${detail}. Vérifie sur FBI avant de réessayer.`;
+    const message = notSent ? `Envoi FBI interrompu avant l'enregistrement (rien n'a été envoyé) : ${detail}` : `Envoi FBI interrompu : ${detail}.`;
     logError("Création d'une dérogation FBI : erreur inattendue", error, { clubId: params.clubId, matchId: params.matchId });
     await supabase
       .from("fbi_derogation_creations")

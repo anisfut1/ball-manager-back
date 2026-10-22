@@ -89,6 +89,8 @@ export async function claimNextFbiWriteJob(supabase: DbClient, clubId: string, w
     .eq("club_id", clubId)
     .in("type", ["create_derogation", "respond_derogation"])
     .eq("status", "pending")
+    // Nouvel essai programmé (envoi incertain à revérifier) : pas avant son heure.
+    .lte("scheduled_at", new Date().toISOString())
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();

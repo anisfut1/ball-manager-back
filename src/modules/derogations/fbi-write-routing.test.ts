@@ -18,6 +18,7 @@ function fakeJobsDb(rows: Row[] = []) {
       select: () => chain,
       eq: (col: string, value: unknown) => (filters.push((r) => r[col] === value), chain),
       in: (col: string, values: unknown[]) => (filters.push((r) => values.includes(r[col])), chain),
+      lte: (col: string, value: string) => (filters.push((r) => r[col] === undefined || String(r[col]) <= value), chain),
       order: () => chain,
       limit: () => chain,
       maybeSingle: async () => ({ data: run()[0] ?? null, error: null }),
