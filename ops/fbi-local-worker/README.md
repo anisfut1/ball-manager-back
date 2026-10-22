@@ -84,9 +84,10 @@ npm run fbi:local-worker
   Reste sur Vercel : « Vérifier sur FBI » d'une seule dérogation.
 - Journal : `fbi-local-worker-<date>.jsonl` (sans identifiant, mot de passe
   ni valeur de cookie).
-- Tant qu'il tourne, Vercel ne se connecte plus à FBI (bail de 30 min
-  renouvelé à chaque passe dans `platform_settings.fbi_paused_until`).
+- Tant qu'il tourne, Vercel ne se connecte plus à FBI (bail de 5 min
+  renouvelé chaque minute dans `platform_settings.fbi_paused_until`).
 - Ctrl+C : bail libéré (Vercel reprend immédiatement), navigateur fermé sans déconnexion FBI. Mac éteint ou en veille :
-  le bail expire en 30 min et Vercel reprend seul.
+  le bail expire en 5 min au plus et Vercel reprend seul (les envois de
+  dérogation partent alors par Vercel).
 - Le Mac doit rester allumé et éveillé (`caffeinate -i npm run fbi:local-worker`
   empêche la veille pendant que le worker tourne).
