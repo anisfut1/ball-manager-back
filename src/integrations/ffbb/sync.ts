@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { latestPerUniqueKey, removeSupersededMatches } from "./duplicates.js";
 import type { Database } from "../../db/types.js";
 import type { FfbbPublicProvider } from "./public-provider.js";
 import type { NormalizedCompetition, NormalizedPool, NormalizedTeamEngagement } from "./types.js";
@@ -380,8 +381,12 @@ export async function syncFfbb(supabase: Client, provider: FfbbPublicProvider, c
 
     const fbiCorrectionsByMatchId = await loadFbiCorrections(supabase, club.id);
 
+    // Une seule fiche par rencontre : la FFBB renvoie parfois l'ancien et le nouveau calendrier (voir duplicates.ts).
+    const { kept: matches, superseded } = latestPerUniqueKey(snapshot.matches);
+    if (superseded.length > 0) logInfo("Fiches FFBB en double ignorées (ancien calendrier)", { clubId: club.id, ignored: superseded.map((m) => m.ffbbId) });
+
     const homeVenues = new Map<string, { name: string | null; address: string | null }>();
-    for (const match of snapshot.matches) {
+    for (const match of matches) {
       try {
         const venueId = await upsertVenue(supabase, match.venue?.ffbbId ?? null, match.venue?.name ?? null, match.venue?.address ?? null);
         if (match.isHome && venueId) homeVenues.set(venueId, { name: match.venue?.name ?? null, address: match.venue?.address ?? null });
@@ -458,6 +463,7 @@ export async function syncFfbb(supabase: Client, provider: FfbbPublicProvider, c
     }
 
     await ensureClubVenues(supabase, club.id, homeVenues);
+    await removeSupersededMatches(supabase, club.id, matches).catch((error: unknown) => logError("Nettoyage des doublons FFBB échoué", error, { clubId: club.id }));
 
     const finalStatus = stats.errors === 0 ? "success" : "partial";
 
