@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { latestPerUniqueKey, removeSupersededMatches } from "./duplicates.js";
+import { isExemptMatch, latestPerUniqueKey, removeExemptMatches, removeSupersededMatches } from "./duplicates.js";
 import type { Database } from "../../db/types.js";
 import type { FfbbPublicProvider } from "./public-provider.js";
 import type { NormalizedCompetition, NormalizedPool, NormalizedTeamEngagement } from "./types.js";
@@ -382,7 +382,9 @@ export async function syncFfbb(supabase: Client, provider: FfbbPublicProvider, c
     const fbiCorrectionsByMatchId = await loadFbiCorrections(supabase, club.id);
 
     // Une seule fiche par rencontre : la FFBB renvoie parfois l'ancien et le nouveau calendrier (voir duplicates.ts).
-    const { kept: matches, superseded } = latestPerUniqueKey(snapshot.matches);
+    // Exempts (tour sans adversaire) : pas des matchs, jamais dans le calendrier (voir duplicates.ts).
+    const exempts = snapshot.matches.filter(isExemptMatch);
+    const { kept: matches, superseded } = latestPerUniqueKey(snapshot.matches.filter((m) => !isExemptMatch(m)));
     if (superseded.length > 0) logInfo("Fiches FFBB en double ignorées (ancien calendrier)", { clubId: club.id, ignored: superseded.map((m) => m.ffbbId) });
 
     const homeVenues = new Map<string, { name: string | null; address: string | null }>();
@@ -464,6 +466,7 @@ export async function syncFfbb(supabase: Client, provider: FfbbPublicProvider, c
 
     await ensureClubVenues(supabase, club.id, homeVenues);
     await removeSupersededMatches(supabase, club.id, matches).catch((error: unknown) => logError("Nettoyage des doublons FFBB échoué", error, { clubId: club.id }));
+    await removeExemptMatches(supabase, club.id, exempts.map((m) => m.ffbbId)).catch((error: unknown) => logError("Nettoyage des exempts FFBB échoué", error, { clubId: club.id }));
 
     const finalStatus = stats.errors === 0 ? "success" : "partial";
 

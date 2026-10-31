@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { latestPerUniqueKey } from "./duplicates.js";
+import { isExemptMatch, latestPerUniqueKey } from "./duplicates.js";
 
 const m = (ffbbId: string, uniqueKey: string | null, engagement = "e-u11-2") => ({ ffbbId, uniqueKey, ourEngagementFfbbId: engagement });
 
@@ -23,5 +23,15 @@ describe("latestPerUniqueKey (doublons FFBB, U11 2 M, 2026-10-23)", () => {
     expect(latestPerUniqueKey(noKey).kept).toHaveLength(2);
     const derby = [m("5", "k", "e-u11-1"), m("5", "k", "e-u11-2")];
     expect(latestPerUniqueKey(derby).kept).toHaveLength(2);
+  });
+});
+
+describe("isExemptMatch (exempts du 22/11, U15 1 M et Seniors F, 2026-10-31)", () => {
+  it("adversaire vide ou « Exempt » : pas un match", () => {
+    expect(isExemptMatch({ opponentName: "" })).toBe(true);
+    expect(isExemptMatch({ opponentName: null })).toBe(true);
+    expect(isExemptMatch({ opponentName: "  " })).toBe(true);
+    expect(isExemptMatch({ opponentName: "Exempt" })).toBe(true);
+    expect(isExemptMatch({ opponentName: "ST GELY BASKETBALL - 1" })).toBe(false);
   });
 });
