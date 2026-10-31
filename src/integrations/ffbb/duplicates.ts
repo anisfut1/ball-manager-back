@@ -41,6 +41,54 @@ export function latestPerUniqueKey<T extends DedupableMatch>(matches: readonly T
 /** Données du club rattachées à un match : jamais supprimées avec une fiche périmée. */
 const DEPENDENT_TABLES = ["derogation_requests", "match_convocations", "match_availability_requests", "table_assignments", "fbi_derogation_checks", "match_laundry_assignments", "emarque_imports"] as const;
 
+type DependentTable = (typeof DEPENDENT_TABLES)[number];
+
+/** Supprime un match du club si aucune des tables données n'y rattache de donnée (comptage impossible = gardé). */
+async function deleteMatchIfUnused(supabase: DbClient, clubId: string, row: { id: string; numero: string | null; ffbb_match_id: string }, tables: readonly DependentTable[], reason: string): Promise<boolean> {
+  const counts = await Promise.all(tables.map((table) => supabase.from(table).select("match_id", { count: "exact", head: true }).eq("match_id", row.id)));
+  if (counts.some((c) => c.error || (c.count ?? 0) > 0)) {
+    logError(`${reason} conservé : données rattachées`, null, { clubId, matchId: row.id, numero: row.numero, ffbbMatchId: row.ffbb_match_id });
+    return false;
+  }
+  const { error } = await supabase.from("matches").delete().eq("id", row.id).eq("club_id", clubId);
+  if (error) {
+    logError(`Suppression (${reason}) échouée`, error, { clubId, matchId: row.id });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Exempts (retour du club, 2026-10-31 : « le 22 novembre, 2 matchs où les
+ * équipes sont exemptes (U15 et SF) apparaissent sur le planning de
+ * réservation de salle ; si équipe exempte, pas besoin de mettre dans le
+ * calendrier ») : la FFBB publie le tour sans adversaire comme une rencontre
+ * au nom d'adversaire vide (FBI : « Exempt »). Ce n'est pas un match.
+ */
+export function isExemptMatch(match: { opponentName: string | null }): boolean {
+  const name = match.opponentName?.trim() ?? "";
+  return name === "" || name.toLowerCase() === "exempt";
+}
+
+/**
+ * Retire de la base les exempts déjà importés. Les dérogations FBI d'un
+ * exempt (demandes refusées) partent avec ; jamais un exempt auquel une
+ * demande, une convocation, une table de marque… est rattachée.
+ */
+export async function removeExemptMatches(supabase: DbClient, clubId: string, exemptFfbbIds: readonly string[]): Promise<number> {
+  if (exemptFfbbIds.length === 0) return 0;
+  const { data: rows, error } = await supabase.from("matches").select("id, numero, ffbb_match_id").eq("club_id", clubId).in("ffbb_match_id", [...exemptFfbbIds]);
+  if (error) {
+    logError("Lecture des exempts FFBB échouée", error, { clubId });
+    return 0;
+  }
+  const tables = DEPENDENT_TABLES.filter((t) => t !== "fbi_derogation_checks");
+  let removed = 0;
+  for (const row of rows ?? []) if (await deleteMatchIfUnused(supabase, clubId, row, tables, "Exempt FFBB")) removed += 1;
+  if (removed > 0) logInfo("Exempts FFBB retirés du calendrier", { clubId, removed });
+  return removed;
+}
+
 /**
  * Supprime les fiches périmées en base (même rencontre qu'une fiche gardée,
  * autre identifiant FFBB) — seulement si rien n'y est rattaché ; sinon
@@ -60,15 +108,7 @@ export async function removeSupersededMatches(supabase: DbClient, clubId: string
     for (const row of rows ?? []) {
       const keptId = row.ffbb_unique_key ? keptByKey.get(row.ffbb_unique_key) : undefined;
       if (!keptId || row.ffbb_match_id === keptId) continue;
-      const counts = await Promise.all(DEPENDENT_TABLES.map((table) => supabase.from(table).select("match_id", { count: "exact", head: true }).eq("match_id", row.id)));
-      // Comptage impossible = on ne sait pas : la fiche est gardée.
-      if (counts.some((c) => c.error || (c.count ?? 0) > 0)) {
-        logError("Doublon FFBB conservé : données rattachées", null, { clubId, matchId: row.id, numero: row.numero, ffbbMatchId: row.ffbb_match_id, keptFfbbMatchId: keptId });
-        continue;
-      }
-      const { error: deleteError } = await supabase.from("matches").delete().eq("id", row.id).eq("club_id", clubId);
-      if (deleteError) logError("Suppression d'un doublon FFBB échouée", deleteError, { clubId, matchId: row.id });
-      else removed += 1;
+      if (await deleteMatchIfUnused(supabase, clubId, row, DEPENDENT_TABLES, "Doublon FFBB")) removed += 1;
     }
   }
   if (removed > 0) logInfo("Doublons FFBB supprimés (fiches périmées)", { clubId, removed });
