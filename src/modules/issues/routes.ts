@@ -8,6 +8,7 @@ import type { QualityWarningDto } from "../../contracts/emarque.js";
 import { currentSeasonStart } from "../../season.js";
 import { detectTeamConflicts, detectVenueConflicts, groupConflicts, MATCH_SLOT_MINUTES } from "./venue-conflicts.js";
 import { hasRole } from "../../tenancy/roles.js";
+import { createServiceSupabaseClient } from "../../db/client.js";
 import { localDateKey } from "../../util/timezone.js";
 import { CLOSURE_COLUMNS, withConflicts, type ClosureRow } from "../club-venues/closures.js";
 
@@ -247,14 +248,25 @@ issuesRouter.get("/", async (c) => {
   const canSeePhones = hasRole(c.get("club").roles, "club_admin");
   const [{ data: teams }, { data: coachRows }] = await Promise.all([
     supabase.from("teams").select("id, name").eq("club_id", club.id),
-    supabase.from("licencies").select("first_name, last_name, phone, coached_team_ids, public_coach, active").eq("club_id", club.id).eq("public_coach", true),
+    supabase.from("licencies").select("id, first_name, last_name, coached_team_ids, public_coach, active").eq("club_id", club.id).eq("public_coach", true),
   ]);
+  // Le téléphone n'est plus lisible en direct (migration 20261023090000) : lu en
+  // service role, et seulement pour un club_admin (décision prise ci-dessus).
+  const phoneById = new Map<string, string | null>();
+  if (canSeePhones && (coachRows ?? []).length > 0) {
+    const { data: phones } = await createServiceSupabaseClient()
+      .from("licencies")
+      .select("id, phone")
+      .eq("club_id", club.id)
+      .in("id", (coachRows ?? []).map((l) => l.id));
+    for (const row of phones ?? []) phoneById.set(row.id, row.phone ?? null);
+  }
   const teamNameById = new Map((teams ?? []).map((t) => [t.id, t.name]));
   const coachesFor = (teamId: string | null) =>
     teamId
       ? (coachRows ?? [])
           .filter((l) => l.active && (l.coached_team_ids ?? []).includes(teamId))
-          .map((l) => ({ name: `${l.first_name} ${l.last_name}`.trim(), phone: canSeePhones ? (l.phone ?? null) : null }))
+          .map((l) => ({ name: `${l.first_name} ${l.last_name}`.trim(), phone: canSeePhones ? (phoneById.get(l.id) ?? null) : null }))
       : [];
 
   type RelatedMatchRow = { id: string; numero: string | null; team_id: string | null; opponent_name: string | null; match_datetime: string; venue_raw_label: string | null; is_home: boolean | null };

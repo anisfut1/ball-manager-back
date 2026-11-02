@@ -27,6 +27,7 @@ import { LICENCIE_PHOTO_TYPES, MAX_LICENCIE_PHOTO_BYTES, removeStoredLicenciePho
 import { logError } from "../../logger.js";
 import { actorFromAccount } from "../trainings/actor.js";
 import { buildLicencieViewer, redactLicencieForViewer } from "./redact.js";
+import { LICENCIE_PUBLIC_COLUMNS, loadSensitiveFields, pickPublicFields, sensitiveOrNull, type PublicLicencieRow } from "./read.js";
 
 export const licenciesRouter = new Hono<AppEnv>();
 
@@ -106,15 +107,19 @@ licenciesRouter.get("/", async (c) => {
   const supabase = c.get("supabase");
 
   // Acteur chargé UNE fois pour toute la liste (jamais une requête par licencié).
+  // Colonnes publiques avec le client utilisateur ; les colonnes sensibles ne
+  // sont lues (service role) que pour les licenciés que ce viewer peut voir.
   const [{ data, error }, actor] = await Promise.all([
-    supabase.from("licencies").select(LICENCIE_COLUMNS).eq("club_id", club.id).order("last_name").order("first_name"),
+    supabase.from("licencies").select(LICENCIE_PUBLIC_COLUMNS).eq("club_id", club.id).order("last_name").order("first_name"),
     actorFromAccount(supabase, membershipId, c.get("user").id, false),
   ]);
 
   if (error) throw new Error(`Lecture des licenciés échouée : ${error.message}`);
 
   const viewer = buildLicencieViewer(roles, actor);
-  const licencies: LicencieDto[] = (data ?? []).map((row) => redactLicencieForViewer(mapLicencieRow(row), viewer));
+  const publicRows = ((data ?? []) as PublicLicencieRow[]).map(pickPublicFields);
+  const sensitive = await loadSensitiveFields(club.id, publicRows, viewer);
+  const licencies: LicencieDto[] = publicRows.map((row) => redactLicencieForViewer(mapLicencieRow({ ...row, ...sensitiveOrNull(sensitive, row.id) }), viewer));
   return c.json({ licencies } satisfies LicenciesListDto);
 });
 
@@ -136,8 +141,12 @@ licenciesRouter.get("/:licencieId", async (c) => {
   const licencieId = c.req.param("licencieId");
   if (!licencieId) throw badRequest("Paramètre de route :licencieId manquant.");
 
-  const { data: licencieRow } = await supabase.from("licencies").select(LICENCIE_COLUMNS).eq("id", licencieId).eq("club_id", club.id).maybeSingle();
-  if (!licencieRow) throw notFound("Licencié introuvable.");
+  const { data: publicRow } = await supabase.from("licencies").select(LICENCIE_PUBLIC_COLUMNS).eq("id", licencieId).eq("club_id", club.id).maybeSingle();
+  if (!publicRow) throw notFound("Licencié introuvable.");
+  const licencieRowPublic = pickPublicFields(publicRow as PublicLicencieRow);
+  const viewer = buildLicencieViewer(roles, await actorFromAccount(supabase, membershipId, user.id, false));
+  const sensitive = await loadSensitiveFields(club.id, [licencieRowPublic], viewer);
+  const licencieRow: LicencieRow = { ...licencieRowPublic, ...sensitiveOrNull(sensitive, licencieRowPublic.id) };
 
   const ownLicencieId = await getOwnLicencieId(supabase, club.id, user.id);
   const isSelf = ownLicencieId === licencieId;
@@ -197,7 +206,7 @@ licenciesRouter.get("/:licencieId", async (c) => {
     .sort((a, b) => (b.matchDatetime ?? "").localeCompare(a.matchDatetime ?? ""));
 
   const dto: LicencieProfileDto = {
-    licencie: redactLicencieForViewer(mapLicencieRow(licencieRow), buildLicencieViewer(roles, await actorFromAccount(supabase, membershipId, user.id, false))),
+    licencie: redactLicencieForViewer(mapLicencieRow(licencieRow), viewer),
     canEdit,
     isSelf,
     matches,
