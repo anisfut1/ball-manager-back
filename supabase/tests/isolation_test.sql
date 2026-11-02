@@ -217,7 +217,17 @@ select pg_temp.assert_count('coexistence - 2 matches avec le meme ffbb_match_id,
 -- =============================================================
 set role anon;
 select pg_temp.assert_count('anon - aucun match visible', 0, (select count(*) from public.matches));
-select pg_temp.assert_count('anon - aucun licencie visible', 0, (select count(*) from public.licencies));
+-- anon n'a plus aucun droit de lecture sur licencies (migration 20261102181000) :
+-- exiger un refus de droit (42501), pas un simple comptage à 0.
+do $$
+begin
+  perform count(*) from public.licencies;
+  raise exception 'ECHEC [anon - licencies : permission denied attendu, la lecture a reussi]';
+exception
+  when insufficient_privilege then
+    raise notice 'OK [anon - licencies refuse (42501)]';
+end;
+$$;
 select pg_temp.assert_claim_next_fbi_job_denied('anon - claim_next_fbi_job refusee');
 reset role;
 
