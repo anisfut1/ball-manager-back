@@ -236,13 +236,13 @@ async function syncSeries(ctx: TrainingCtx, series: SeriesRow, fromDate: string)
 }
 
 /** Retire des séances futures : supprimées si personne n'a répondu, sinon annulées (jamais en silence). */
-async function removeOccurrences(ctx: TrainingCtx, rows: OccurrenceRow[], reason: string): Promise<void> {
+export async function removeOccurrences(ctx: TrainingCtx, rows: OccurrenceRow[], reason: string): Promise<void> {
   if (rows.length === 0) return;
   const answered = new Set((await responsesFor(ctx, rows.map((r) => r.id))).map((r) => r.occurrence_id));
   const toDelete = rows.filter((r) => !answered.has(r.id)).map((r) => r.id);
   const toCancel = rows.filter((r) => answered.has(r.id)).map((r) => r.id);
   for (const id of toDelete) await ctx.db.from("training_occurrences").delete().eq("id", id).eq("club_id", ctx.clubId);
-  if (toCancel.length > 0) await ctx.db.from("training_occurrences").update({ status: "cancelled", cancel_reason: reason, updated_at: new Date().toISOString() }).in("id", toCancel);
+  if (toCancel.length > 0) await ctx.db.from("training_occurrences").update({ status: "cancelled", cancel_reason: reason, updated_at: new Date().toISOString() }).eq("club_id", ctx.clubId).in("id", toCancel);
 }
 
 export async function listSeries(ctx: TrainingCtx, teamId: string): Promise<TrainingSeriesDto[]> {
