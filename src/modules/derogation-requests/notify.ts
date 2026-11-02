@@ -77,7 +77,7 @@ export async function notifyDerogationRequest(
     const base = appBaseUrl();
     return await sendAll(
       recipients,
-      (r) =>
+      () =>
         buildDerogationRequestEmail({
           club,
           kind: input.kind,
