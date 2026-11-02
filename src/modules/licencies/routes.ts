@@ -25,6 +25,8 @@ import { requireClubRole } from "../../auth/middleware.js";
 import { autoAssignTeamsForClub } from "./auto-assign-teams.js";
 import { LICENCIE_PHOTO_TYPES, MAX_LICENCIE_PHOTO_BYTES, removeStoredLicenciePhoto, storedPhotoPath, uploadLicenciePhoto, type LicenciePhotoType } from "../../storage/licencie-photos.js";
 import { logError } from "../../logger.js";
+import { actorFromAccount } from "../trainings/actor.js";
+import { buildLicencieViewer, redactLicencieForViewer } from "./redact.js";
 
 export const licenciesRouter = new Hono<AppEnv>();
 
@@ -100,14 +102,19 @@ async function getOwnLicencieId(supabase: DbClient, clubId: string, userId: stri
 
 /** GET /v1/clubs/:clubId/licencies — roster du club (tri alphabétique). RLS : tout membre actif du club (voir migration 20260925090000). */
 licenciesRouter.get("/", async (c) => {
-  const { club } = c.get("club");
+  const { club, roles, membershipId } = c.get("club");
   const supabase = c.get("supabase");
 
-  const { data, error } = await supabase.from("licencies").select(LICENCIE_COLUMNS).eq("club_id", club.id).order("last_name").order("first_name");
+  // Acteur chargé UNE fois pour toute la liste (jamais une requête par licencié).
+  const [{ data, error }, actor] = await Promise.all([
+    supabase.from("licencies").select(LICENCIE_COLUMNS).eq("club_id", club.id).order("last_name").order("first_name"),
+    actorFromAccount(supabase, membershipId, c.get("user").id, false),
+  ]);
 
   if (error) throw new Error(`Lecture des licenciés échouée : ${error.message}`);
 
-  const licencies: LicencieDto[] = (data ?? []).map(mapLicencieRow);
+  const viewer = buildLicencieViewer(roles, actor);
+  const licencies: LicencieDto[] = (data ?? []).map((row) => redactLicencieForViewer(mapLicencieRow(row), viewer));
   return c.json({ licencies } satisfies LicenciesListDto);
 });
 
@@ -123,7 +130,7 @@ licenciesRouter.get("/", async (c) => {
  * double embed simultané non testé contre le vrai schéma.
  */
 licenciesRouter.get("/:licencieId", async (c) => {
-  const { club, roles } = c.get("club");
+  const { club, roles, membershipId } = c.get("club");
   const user = c.get("user");
   const supabase = c.get("supabase");
   const licencieId = c.req.param("licencieId");
@@ -190,7 +197,7 @@ licenciesRouter.get("/:licencieId", async (c) => {
     .sort((a, b) => (b.matchDatetime ?? "").localeCompare(a.matchDatetime ?? ""));
 
   const dto: LicencieProfileDto = {
-    licencie: mapLicencieRow(licencieRow),
+    licencie: redactLicencieForViewer(mapLicencieRow(licencieRow), buildLicencieViewer(roles, await actorFromAccount(supabase, membershipId, user.id, false))),
     canEdit,
     isSelf,
     matches,
