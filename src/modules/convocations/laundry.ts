@@ -134,7 +134,7 @@ export async function markLaundrySeen(ctx: TrainingCtx, matchId: string, licenci
 }
 
 /** Lavages attribués aux personnes de l'appareil, matchs récents / à venir (Home). */
-export async function laundryDutiesFor(ctx: TrainingCtx, licencieIds: string[], now: Date = new Date()) {
+export async function laundryDutiesFor(ctx: TrainingCtx, licencieIds: string[]) {
   if (licencieIds.length === 0) return [];
   const { data } = await ctx.db.from("match_laundry_assignments").select("match_id, team_id, licencie_id, seen_at").eq("club_id", ctx.clubId).in("licencie_id", licencieIds);
   return (data ?? []) as { match_id: string; team_id: string; licencie_id: string; seen_at: string | null }[];
