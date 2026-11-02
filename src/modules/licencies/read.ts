@@ -7,7 +7,7 @@ import { canViewSensitive, type LicencieViewer } from "./redact.js";
  *  2. colonnes SENSIBLES avec le client service role, UNIQUEMENT pour les
  *     licenciés que `canViewSensitive` autorise — jamais avant la décision.
  * Le droit de lecture direct des colonnes sensibles est retiré à
- * `authenticated` (migration 20261023090000) : seul ce back les lit.
+ * `authenticated` (migration 20261102181000) : seul ce back les lit.
  * Fonctionne avant comme après la migration.
  */
 export const LICENCIE_PUBLIC_COLUMNS =

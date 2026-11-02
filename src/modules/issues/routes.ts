@@ -250,7 +250,7 @@ issuesRouter.get("/", async (c) => {
     supabase.from("teams").select("id, name").eq("club_id", club.id),
     supabase.from("licencies").select("id, first_name, last_name, coached_team_ids, public_coach, active").eq("club_id", club.id).eq("public_coach", true),
   ]);
-  // Le téléphone n'est plus lisible en direct (migration 20261023090000) : lu en
+  // Le téléphone n'est plus lisible en direct (migration 20261102181000) : lu en
   // service role, et seulement pour un club_admin (décision prise ci-dessus).
   const phoneById = new Map<string, string | null>();
   if (canSeePhones && (coachRows ?? []).length > 0) {
