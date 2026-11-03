@@ -1,0 +1,7 @@
+# Deux empreintes exactes (commit:fichier:règle:ligne), introduites par 2ef3ce0099
+# (« fix(emarque): fiabilise la récupération automatique des stats e-Marque »).
+# Jetons de la fixture de test, remplacés par des valeurs fictives dans le fichier
+# courant mais toujours présents dans l'historique git. Aucun chemin ni regex :
+# tout autre résultat reste signalé.
+2ef3ce00994d2b4b816b69d9ac2e43a6194626cf:src/integrations/fbi/emarque-search.test.ts:generic-api-key:37
+2ef3ce00994d2b4b816b69d9ac2e43a6194626cf:src/integrations/fbi/emarque-search.test.ts:generic-api-key:38
