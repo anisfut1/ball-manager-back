@@ -8,6 +8,7 @@ import { v1Router } from "./api/v1/index.js";
 import { internalRouter } from "./api/internal/index.js";
 import { generateOpenApiDocument } from "./openapi.js";
 import { logError } from "./logger.js";
+import { isProductionDeployment } from "./security/runtime-env.js";
 
 export const app = new Hono<AppEnv>();
 
@@ -33,8 +34,11 @@ app.use(
 /** GET /health — §41 de la demande : simple, sans auth, sans secret. */
 app.get("/health", (c) => c.json({ status: "ok" }));
 
+// /openapi.json reste public en production : ball-manager-app génère ses types depuis cette URL
+// (scripts/generate-api-types.mjs). À cacher une fois ce script changé (voir src/app-docs.test.ts).
 app.get("/openapi.json", (c) => c.json(generateOpenApiDocument()));
-app.get("/docs", swaggerUI({ url: "/openapi.json" }));
+// Swagger UI : disponible en développement et en preview, introuvable en production (S-11).
+app.get("/docs", (c, next) => (isProductionDeployment() ? c.notFound() : next()), swaggerUI({ url: "/openapi.json" }));
 
 app.route("/v1", v1Router);
 app.route("/internal", internalRouter);
