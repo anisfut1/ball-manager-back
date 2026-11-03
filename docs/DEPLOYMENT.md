@@ -158,7 +158,7 @@ ce workflow est un RELAI plus fréquent, jamais un remplacement.
 
 Workflow `.github/workflows/ci.yml`, lancé sur chaque `pull_request` vers `main` et sur chaque `push` sur `main` (un nouveau commit annule le run en cours de la même branche). Permissions : `contents: read`, Node 24 écrit dans le workflow (pas de `.nvmrc` ni de champ `engines`, pour ne pas changer la version de Node de Vercel). Deux jobs :
 
-- **`verify`** : `npm ci --ignore-scripts`, lint (`--max-warnings 0`), typecheck, tests, build, puis `npm audit --omit=dev --audit-level=high`.
+- **`verify`** : `npm ci --ignore-scripts --no-audit --no-fund --loglevel=http` (trace HTTP de chaque requête, étape limitée à 5 minutes pour qu'un blocage échoue vite avec la dernière requête visible dans le log), lint (`--max-warnings 0`), typecheck, tests, build, puis `npm audit --omit=dev --audit-level=high`.
 - **`gitleaks`** : scan de tout l'historique (`fetch-depth: 0`, `--all`), valeurs masquées (`--redact`). Un secret trouvé fait échouer le job.
 
 `.github/workflows/fbi-frequent-sync.yml` (relai du cron) est à part : `permissions: {}`, il n'utilise que `curl` et le secret `CRON_SECRET`.
