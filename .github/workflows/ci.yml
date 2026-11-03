@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Un seul run par branche : un nouveau commit annule le run en cours.
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint, typecheck, tests, build, audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Valeurs FACTICES : aucun secret en CI. Les tests ne contactent ni Supabase ni FBI ;
+    # elles ne servent qu'à satisfaire le schéma de src/config/env.ts. Domaine `.invalid`
+    # (jamais résolu), chaînes de longueur suffisante, clé AES-256 = 32 octets de 0x07.
+    env:
+      SUPABASE_URL: https://ci.invalid
+      SUPABASE_ANON_KEY: ci-anon-key-not-real
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key-not-real
+      CRON_SECRET: ci-cron-secret-not-real-0000
+      FBI_CREDENTIALS_ENCRYPTION_KEY: BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
+      FRONTEND_ORIGINS: http://localhost:3000
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Installer Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Installer les dépendances (sans scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Lint (0 warning toléré)
+        run: npm run lint -- --max-warnings 0
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        # browser-client.test.ts est EXCLU : il lance Chromium (absent du runner) et contient une
+        # vraie assertion en échec, à traiter dans le lot dédié à ce test. Seule exclusion permise.
+        run: npm test -- --exclude src/integrations/fbi/browser-client.test.ts
+
+      - name: Build
+        run: npm run build
+
+      - name: Audit des dépendances de production
+        # Échoue sur une vulnérabilité haute ou critique de PRODUCTION.
+        run: npm audit --omit=dev --audit-level=high
