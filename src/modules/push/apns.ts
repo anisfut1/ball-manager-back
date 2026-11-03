@@ -126,7 +126,7 @@ export function createApnsSender(config: ApnsConfig, now: () => number = Date.no
         req.on("error", (error) => resolve({ ok: false, status: 0, reason: error.message, permanent: false }));
         req.on("close", () => {
           if (status === 200) return resolve({ ok: true });
-          let reason = "";
+          let reason: string;
           try {
             reason = (JSON.parse(body) as { reason?: string }).reason ?? "";
           } catch {

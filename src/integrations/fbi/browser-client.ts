@@ -2952,7 +2952,7 @@ export class BrowserFbiClient {
     const { page } = session;
     await this.humanPause(page, 1200, 2500);
     // 3 essais rapprochés sur une erreur réseau ou un délai dépassé (même principe que `tryNavigateToSearchScreen`), jamais sur une vraie réponse HTTP.
-    let response: Awaited<ReturnType<Page["goto"]>> = null;
+    let response: Awaited<ReturnType<Page["goto"]>>;
     for (let attempt = 1; ; attempt += 1) {
       try {
         response = await page.goto(`${this.baseUrl}/rechercherLicence.fbi`, { waitUntil: "domcontentloaded", timeout: 45_000 });
