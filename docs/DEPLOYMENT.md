@@ -171,6 +171,13 @@ Workflow `.github/workflows/ci.yml`, lancé sur chaque `pull_request` vers `main
 
 **Dependabot.** `.github/dependabot.yml` ouvre chaque lundi des PR vers `main` pour `npm` (préfixe `chore(deps)`) et `github-actions` (préfixe `ci`), 5 PR ouvertes au plus par écosystème. Les mises à jour patch et minor sont groupées en une PR ; chaque majeure a sa PR. Traitement : attendre que `verify` et `gitleaks` passent, lire le changelog pour une majeure, fusionner ; en cas d'échec, corriger sur la branche de la PR ou la fermer. Les actions restent épinglées par SHA : Dependabot met à jour le SHA et le commentaire `# vX`.
 
+## Durcissement HTTP
+
+- **Débit.** `POST /v1/account/password-reset` : 1 demande par adresse et par minute (silencieux), et **5 demandes par IP et par 15 minutes**, au-delà 429 `{ error: { code: "RATE_LIMITED" } }` avec `Retry-After` (secondes restantes). La réponse ne dépend jamais de l'existence du compte. Les limiteurs sont en mémoire, par instance, avec un plafond de 10 000 entrées : les expirées partent d'abord, puis les plus anciennes même actives (voir `src/security/`).
+- **Taille des corps.** 1 Mio pour toutes les routes ; seule `POST /v1/clubs/:clubId/licencies/import/file` (export Excel FBI) accepte 5 Mio + 64 Kio. Au-delà : 413 `{ error: { code: "PAYLOAD_TOO_LARGE" } }`, avant toute lecture du corps. Vercel refuse de toute façon les corps de plus de 4,5 Mo.
+- **En-têtes.** Toutes les réponses : `X-Content-Type-Options: nosniff`, `Strict-Transport-Security`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Cross-Origin-Resource-Policy: same-origin`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`. `/docs` a une CSP plus large (Swagger UI charge ses fichiers depuis `cdn.jsdelivr.net`). Les en-têtes CORS sont posés avant et ne changent pas.
+- **`/docs` et `/openapi.json`.** `/docs` (Swagger UI) répond 404 quand `VERCEL_ENV` vaut `production`, 200 en preview et en local. `/openapi.json` reste public partout : `ball-manager-app/scripts/generate-api-types.mjs` le télécharge en production. À cacher après avoir changé ce script (le test `src/app-docs.test.ts` le rappelle).
+
 ## Ce que ce déploiement NE fait PAS
 
 - Ne crée pas de nouveau projet Supabase.
