@@ -42,7 +42,11 @@ jobs:
           cache: npm
 
       - name: Installer les dépendances (sans scripts)
-        run: npm ci --ignore-scripts
+        # Limite propre à l'étape : un blocage échoue en 5 minutes. --loglevel=http trace chaque
+        # requête (la dernière en cours apparaît si l'installation se bloque). L'audit garde son
+        # étape dédiée plus bas, d'où --no-audit.
+        timeout-minutes: 5
+        run: npm ci --ignore-scripts --no-audit --no-fund --loglevel=http
 
       - name: Lint (0 warning toléré)
         run: npm run lint -- --max-warnings 0
