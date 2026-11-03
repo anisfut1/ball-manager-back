@@ -8,6 +8,7 @@ import { v1Router } from "./api/v1/index.js";
 import { internalRouter } from "./api/internal/index.js";
 import { generateOpenApiDocument } from "./openapi.js";
 import { logError } from "./logger.js";
+import { securityHeaders } from "./security/headers.js";
 import { isProductionDeployment } from "./security/runtime-env.js";
 
 export const app = new Hono<AppEnv>();
@@ -30,6 +31,9 @@ app.use(
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   }),
 );
+
+/** En-têtes de sécurité (S-12a), après CORS pour ne jamais écraser ses en-têtes. */
+app.use("*", securityHeaders);
 
 /** GET /health — §41 de la demande : simple, sans auth, sans secret. */
 app.get("/health", (c) => c.json({ status: "ok" }));
