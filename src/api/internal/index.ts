@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import type { AppEnv } from "../../auth/context.js";
 import { getEnv } from "../../config/env.js";
@@ -34,9 +35,14 @@ import { logError } from "../../logger.js";
  */
 export const internalRouter = new Hono<AppEnv>();
 
+/** Comparaison en temps constant : condensés SHA-256 de longueur fixe, donc sans fuite de la longueur du secret. */
+function sameSecret(received: string | undefined, expected: string): boolean {
+  const digest = (value: string) => createHash("sha256").update(value).digest();
+  return timingSafeEqual(digest(received ?? ""), digest(expected));
+}
+
 internalRouter.use("*", async (c, next) => {
-  const header = c.req.header("authorization");
-  if (header !== `Bearer ${getEnv().CRON_SECRET}`) {
+  if (!sameSecret(c.req.header("authorization"), `Bearer ${getEnv().CRON_SECRET}`)) {
     throw unauthorized("Route interne protégée par CRON_SECRET.");
   }
   await next();

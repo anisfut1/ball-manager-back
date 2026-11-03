@@ -39,7 +39,7 @@ async function findLicencieIdByLicense(supabase: Client, clubId: string, license
   const { data, error } = await supabase.from("licencies").select("id").eq("club_id", clubId).eq("license_number", licenseNumber);
 
   if (error) {
-    logError("Recherche licencié par numéro de licence échouée", error, { licenseNumber });
+    logError("Recherche licencié par numéro de licence échouée", error, { clubId });
     return null;
   }
 
@@ -156,7 +156,7 @@ async function autoProvisionLicencieId(supabase: Client, clubId: string, player:
     return findLicencieIdByLicense(supabase, clubId, player.licenseNumber);
   }
 
-  logError("Auto-provisionnement d'un licencié depuis e-Marque échoué", error, { clubId, licenseNumber: player.licenseNumber });
+  logError("Auto-provisionnement d'un licencié depuis e-Marque échoué", error, { clubId });
   return null;
 }
 

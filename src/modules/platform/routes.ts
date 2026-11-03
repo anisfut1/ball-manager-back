@@ -93,7 +93,7 @@ platformRouter.post("/clubs", async (c) => {
     try {
       await inviteFirstClubAdmin(supabase, club.id, adminEmail);
     } catch (error) {
-      logError("Invitation du premier admin de club échouée", error, { clubId: club.id, adminEmail });
+      logError("Invitation du premier admin de club échouée", error, { clubId: club.id });
       adminInviteError = "Club créé, mais l'invitation de l'admin a échoué (à refaire manuellement).";
     }
   }
