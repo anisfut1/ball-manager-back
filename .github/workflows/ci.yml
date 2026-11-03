@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Un seul run par branche : un nouveau commit annule le run en cours.
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint, typecheck, tests, build, audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Valeurs FACTICES : aucun secret en CI. Les tests ne contactent ni Supabase ni FBI ;
+    # elles ne servent qu'à satisfaire le schéma de src/config/env.ts. Domaine `.invalid`
+    # (jamais résolu), chaînes de longueur suffisante, clé AES-256 = 32 octets de 0x07.
+    env:
+      SUPABASE_URL: https://ci.invalid
+      SUPABASE_ANON_KEY: ci-anon-key-not-real
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key-not-real
+      CRON_SECRET: ci-cron-secret-not-real-0000
+      FBI_CREDENTIALS_ENCRYPTION_KEY: BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
+      FRONTEND_ORIGINS: http://localhost:3000
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Installer Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Installer les dépendances (sans scripts)
+        # Limite propre à l'étape : un blocage échoue en 5 minutes. --loglevel=http trace chaque
+        # requête (la dernière en cours apparaît si l'installation se bloque). L'audit garde son
+        # étape dédiée plus bas, d'où --no-audit.
+        timeout-minutes: 5
+        run: npm ci --ignore-scripts --no-audit --no-fund --loglevel=http
+
+      - name: Lint (0 warning toléré)
+        run: npm run lint -- --max-warnings 0
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        # browser-client.test.ts est EXCLU : il lance Chromium (absent du runner) et contient une
+        # vraie assertion en échec, à traiter dans le lot dédié à ce test. Seule exclusion permise.
+        run: npm test -- --exclude src/integrations/fbi/browser-client.test.ts
+
+      - name: Build
+        run: npm run build
+
+      - name: Audit des dépendances de production
+        # Échoue sur une vulnérabilité haute ou critique de PRODUCTION.
+        run: npm audit --omit=dev --audit-level=high
+
+  gitleaks:
+    name: Secrets (gitleaks, historique complet)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      # SHA-256 de gitleaks_8.30.1_linux_x64.tar.gz, identique à celui du fichier
+      # checksums.txt officiel de la release. À changer avec la version (voir docs/DEPLOYMENT.md).
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - name: Récupérer tout l'historique
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Installer gitleaks (version épinglée, somme vérifiée avant exécution)
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$archive" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archive"
+          echo "${GITLEAKS_SHA256}  $archive" | sha256sum --check -
+          tar -xzf "$archive" gitleaks
+
+      - name: Scanner l'historique
+        # --redact : la valeur d'un secret n'apparaît jamais dans les logs. Le code de sortie non nul
+        # (secret trouvé) fait échouer le job. .gitleaksignore (racine) liste deux empreintes connues.
+        run: ./gitleaks git . --log-opts="--all" --redact=100 --no-banner --verbose

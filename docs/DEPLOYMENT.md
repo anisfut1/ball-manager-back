@@ -154,6 +154,23 @@ déjà configurée côté Vercel — jamais généré séparément, sinon les ap
 (inoffensifs à laisser tourner en double, chaque route étant idempotente) —
 ce workflow est un RELAI plus fréquent, jamais un remplacement.
 
+## CI
+
+Workflow `.github/workflows/ci.yml`, lancé sur chaque `pull_request` vers `main` et sur chaque `push` sur `main` (un nouveau commit annule le run en cours de la même branche). Permissions : `contents: read`, Node 24 écrit dans le workflow (pas de `.nvmrc` ni de champ `engines`, pour ne pas changer la version de Node de Vercel). Deux jobs :
+
+- **`verify`** : `npm ci --ignore-scripts --no-audit --no-fund --loglevel=http` (trace HTTP de chaque requête, étape limitée à 5 minutes pour qu'un blocage échoue vite avec la dernière requête visible dans le log), lint (`--max-warnings 0`), typecheck, tests, build, puis `npm audit --omit=dev --audit-level=high`.
+- **`gitleaks`** : scan de tout l'historique (`fetch-depth: 0`, `--all`), valeurs masquées (`--redact`). Un secret trouvé fait échouer le job.
+
+`.github/workflows/fbi-frequent-sync.yml` (relai du cron) est à part : `permissions: {}`, il n'utilise que `curl` et le secret `CRON_SECRET`.
+
+**Test exclu.** `src/integrations/fbi/browser-client.test.ts` est exclu par la ligne de commande (`npm test -- --exclude …`) : il lance Chromium, absent du runner, et contient une vraie assertion en échec. Ce test sera traité dans un lot dédié ; retirer alors l'option `--exclude` de `ci.yml`. C'est la seule exclusion.
+
+**Valeurs factices.** Le bloc `env:` du job `verify` contient des valeurs factices (domaine `.invalid`, clé AES de 32 octets identiques) pour satisfaire `src/config/env.ts`. Aucun secret réel n'est utilisé en CI, il ne faut jamais en ajouter.
+
+**Mettre à jour gitleaks.** La version et la somme SHA-256 de l'archive `linux_x64` sont codées en dur dans le job `gitleaks` (`GITLEAKS_VERSION`, `GITLEAKS_SHA256`). Pour changer de version : télécharger `gitleaks_<version>_linux_x64.tar.gz` et `gitleaks_<version>_checksums.txt` depuis la release officielle, calculer `sha256sum` de l'archive, vérifier qu'elle est identique à la ligne du fichier `checksums.txt`, puis reporter les deux valeurs dans `ci.yml`. `.gitleaksignore` contient deux empreintes de l'historique (jetons de test e-Marque, commit `2ef3ce0099`) ; n'y ajouter que des empreintes exactes, jamais de chemin ni de regex.
+
+**Dependabot.** `.github/dependabot.yml` ouvre chaque lundi des PR vers `main` pour `npm` (préfixe `chore(deps)`) et `github-actions` (préfixe `ci`), 5 PR ouvertes au plus par écosystème. Les mises à jour patch et minor sont groupées en une PR ; chaque majeure a sa PR. Traitement : attendre que `verify` et `gitleaks` passent, lire le changelog pour une majeure, fusionner ; en cas d'échec, corriger sur la branche de la PR ou la fermer. Les actions restent épinglées par SHA : Dependabot met à jour le SHA et le commentaire `# vX`.
+
 ## Ce que ce déploiement NE fait PAS
 
 - Ne crée pas de nouveau projet Supabase.
