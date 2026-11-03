@@ -24,8 +24,8 @@ const emLink = (token: string, id: string) =>
 const RESPONSE = JSON.stringify({
   iTotalRecords: 3,
   aaData: [
-    row("BU11MN2", "6", emLink("0FTdi5o1wZyPwsDPmay%2FbQ%3D%3D", "200000014744254")),
-    row("BU15MN1", "6", emLink("hpSiYXprCd6ZgGhweKzIfw%3D%3D", "200000014741703")),
+    row("BU11MN2", "6", emLink("FAKE00000000000000000000%3D%3D", "200000014744254")),
+    row("BU15MN1", "6", emLink("FAKE000000000000000000%3D%3D", "200000014741703")),
     row("BU18MN2", "6", "<div class='alignCentrer'></div>"),
   ],
 });
@@ -34,15 +34,15 @@ describe("recherche e-Marque directe FBI (retour du club, 2026-10-02 : matchs sa
   it("lit division, numéro et jeton EM de chaque ligne", () => {
     const rows = parseSearchResponse(RESPONSE);
     expect(rows).toEqual([
-      { division: "BU11MN2", matchNumber: "6", emarqueToken: "0FTdi5o1wZyPwsDPmay%2FbQ%3D%3D", fbiMatchId: "200000014744254", emarqueV2: true },
-      { division: "BU15MN1", matchNumber: "6", emarqueToken: "hpSiYXprCd6ZgGhweKzIfw%3D%3D", fbiMatchId: "200000014741703", emarqueV2: true },
+      { division: "BU11MN2", matchNumber: "6", emarqueToken: "FAKE00000000000000000000%3D%3D", fbiMatchId: "200000014744254", emarqueV2: true },
+      { division: "BU15MN1", matchNumber: "6", emarqueToken: "FAKE000000000000000000%3D%3D", fbiMatchId: "200000014741703", emarqueV2: true },
       { division: "BU18MN2", matchNumber: "6", emarqueToken: null, fbiMatchId: null, emarqueV2: false },
     ]);
   });
 
   it("choisit la ligne de LA bonne division — un même numéro existe dans plusieurs catégories", () => {
     const rows = parseSearchResponse(RESPONSE);
-    expect(pickRow(rows, "6", "BU15MN1")?.emarqueToken).toBe("hpSiYXprCd6ZgGhweKzIfw%3D%3D");
+    expect(pickRow(rows, "6", "BU15MN1")?.emarqueToken).toBe("FAKE000000000000000000%3D%3D");
     expect(pickRow(rows, "6", "BU18MN2")?.emarqueToken).toBeNull();
     expect(pickRow(rows, "6", "DM2")).toBeNull();
     // Sans division connue : jamais un choix au hasard entre plusieurs lignes.
@@ -53,8 +53,8 @@ describe("recherche e-Marque directe FBI (retour du club, 2026-10-02 : matchs sa
   });
 
   it("construit l'URL de téléchargement observée en production (jeton déjà encodé, jamais ré-encodé)", () => {
-    expect(emarqueDownloadUrl("https://extranet.ffbb.com/fbi", "hpSiYXprCd6ZgGhweKzIfw%3D%3D")).toBe(
-      "https://extranet.ffbb.com/fbi/telechargerFeuilleMatchEmarque.fbi?action=emV2&plugin=true&idRenc=hpSiYXprCd6ZgGhweKzIfw%3D%3D",
+    expect(emarqueDownloadUrl("https://extranet.ffbb.com/fbi", "FAKE000000000000000000%3D%3D")).toBe(
+      "https://extranet.ffbb.com/fbi/telechargerFeuilleMatchEmarque.fbi?action=emV2&plugin=true&idRenc=FAKE000000000000000000%3D%3D",
     );
   });
 
