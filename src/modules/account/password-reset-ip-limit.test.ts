@@ -113,4 +113,21 @@ describe("POST /v1/account/password-reset — limite par IP (S-7)", () => {
     for (let i = 0; i < 10; i++) expect((await reset("pas-un-email", "203.0.113.7")).status).toBe(400);
     expect((await reset("ok@club.test", "203.0.113.7")).status).toBe(200);
   });
+
+  it("429 et 404 depuis une origine autorisée portent Access-Control-Allow-Origin (sinon le navigateur masque l'erreur)", async () => {
+    const origin = "http://localhost:3000";
+    for (let i = 1; i <= 5; i++) await reset(`cible${i}@club.test`, "203.0.113.7");
+    const limited = await app.request("/v1/account/password-reset", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.7", origin },
+      body: JSON.stringify({ email: "cible6@club.test" }),
+    });
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("access-control-allow-origin")).toBe(origin);
+    expect(limited.headers.get("x-content-type-options")).toBe("nosniff");
+
+    const missing = await app.request("/nexiste-pas", { headers: { origin } });
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get("access-control-allow-origin")).toBe(origin);
+  });
 });

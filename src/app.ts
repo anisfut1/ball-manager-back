@@ -8,6 +8,7 @@ import { v1Router } from "./api/v1/index.js";
 import { internalRouter } from "./api/internal/index.js";
 import { generateOpenApiDocument } from "./openapi.js";
 import { logError } from "./logger.js";
+import { requestBodyLimit } from "./security/body-limit.js";
 import { securityHeaders } from "./security/headers.js";
 import { isProductionDeployment } from "./security/runtime-env.js";
 
@@ -34,6 +35,9 @@ app.use(
 
 /** En-têtes de sécurité (S-12a), après CORS pour ne jamais écraser ses en-têtes. */
 app.use("*", securityHeaders);
+
+/** Taille des corps (S-12b) : avant toute lecture du corps ; 413 en JSON, avec les en-têtes CORS posés plus haut. */
+app.use("*", requestBodyLimit());
 
 /** GET /health — §41 de la demande : simple, sans auth, sans secret. */
 app.get("/health", (c) => c.json({ status: "ok" }));
