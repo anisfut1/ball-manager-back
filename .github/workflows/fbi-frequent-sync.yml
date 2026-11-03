@@ -24,6 +24,11 @@ on:
     - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
+# Aucun jeton GITHUB_TOKEN n'est nécessaire : le workflow n'utilise ni checkout ni
+# aucune action, seulement curl et le secret CRON_SECRET (dont l'accès ne dépend
+# pas de `permissions`).
+permissions: {}
+
 # Une seule exécution à la fois (même compte FBI) : une exécution longue
 # (plusieurs jobs, voir plus bas) met la suivante en attente, jamais en
 # parallèle.
