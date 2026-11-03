@@ -25,7 +25,7 @@ function timeoutFetch(timeoutMs: number): typeof fetch {
       return await fetch(input, { ...init, signal: controller.signal });
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
-        throw new Error(`Requête Supabase interrompue après ${timeoutMs}ms sans réponse.`);
+        throw new Error(`Requête Supabase interrompue après ${timeoutMs}ms sans réponse.`, { cause: error });
       }
       throw error;
     } finally {
