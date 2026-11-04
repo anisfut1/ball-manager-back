@@ -17,7 +17,7 @@ import {
   consumeAuthCode,
   createAuthCode,
   createDeviceSession,
-  proveTokens,
+  proveTokensOrThrow,
   provenFromTokenIds,
   removeGrant,
   revokeDeviceSession,
@@ -69,8 +69,7 @@ deviceAuthRouter.post("/device-sessions", async (c) => {
   const body = await parse(CreateDeviceSessionDtoSchema, c);
   const db = c.get("supabase");
   const club = c.get("publicClub");
-  const proven = await proveTokens(db, club.id, body.tokens);
-  if (proven.length === 0) throw unauthorized("Lien personnel invalide ou révoqué.", "INVALID_PERSONAL_LINK");
+  const proven = await proveTokensOrThrow(db, club.id, body.tokens);
   const session = await createDeviceSession(db, club.id, proven, { platform: "ios", appVersion: body.appVersion, deviceLabel: body.deviceLabel });
   return c.json({ sessionSecret: session.secret, expiresAt: session.expiresAt, people: await peopleOf(db, club.id, proven.map((p) => p.licencieId)), redirectPath: null }, 201, NO_STORE);
 });
@@ -107,8 +106,7 @@ deviceAuthRouter.post("/session/people", async (c) => {
   const session = await requireSession(c);
   const body = await parse(AddSessionPeopleDtoSchema, c);
   const db = c.get("supabase");
-  const proven = await proveTokens(db, session.clubId, body.tokens);
-  if (proven.length === 0) throw unauthorized("Lien personnel invalide ou révoqué.", "INVALID_PERSONAL_LINK");
+  const proven = await proveTokensOrThrow(db, session.clubId, body.tokens);
   await addGrants(db, session, proven);
   const ids = [...new Set([...session.grants.map((g) => g.licencieId), ...proven.map((p) => p.licencieId)])];
   return c.json({ platform: session.platform, people: await peopleOf(db, session.clubId, ids) }, 200, NO_STORE);
@@ -158,8 +156,7 @@ deviceAuthRouter.post("/codes", async (c) => {
   const body = await parse(CreateAuthCodeDtoSchema, c);
   const db = c.get("supabase");
   const club = c.get("publicClub");
-  const proven = await proveTokens(db, club.id, body.tokens);
-  if (proven.length === 0) throw unauthorized("Lien personnel invalide ou révoqué.", "INVALID_PERSONAL_LINK");
+  const proven = await proveTokensOrThrow(db, club.id, body.tokens);
   const code = await createAuthCode(db, club.id, { purpose: "app_sso", tokenIds: proven.map((p) => p.tokenId), codeChallenge: body.codeChallenge, redirectPath: body.redirectPath, ttlMs: SSO_CODE_TTL_MS });
   return c.json(code, 201, NO_STORE);
 });

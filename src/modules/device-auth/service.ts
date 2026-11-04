@@ -1,6 +1,6 @@
 import type { DbClient } from "../../db/client.js";
 import { badRequest, unauthorized } from "../../api-error.js";
-import { hashPublicToken } from "../public-tables/token.js";
+import { hashPublicToken, isPersonalLinkExpired, PERSONAL_LINK_EXPIRED_CODE } from "../public-tables/token.js";
 import { generateAuthCode, generateSessionSecret, isValidCodeChallenge, sha256Hex, verifyPkce } from "./secrets.js";
 
 /**
@@ -47,26 +47,46 @@ interface TokenRow {
   id: string;
   licencie_id: string;
   revoked_at: string | null;
+  expires_at: string | null;
 }
 
 /** Jetons personnels VALIDES de ce club (les autres sont ignorés, jamais une erreur qui aiderait à deviner). */
-export async function proveTokens(db: DbClient, clubId: string, tokens: readonly string[]): Promise<ProvenToken[]> {
+export async function proveTokens(db: DbClient, clubId: string, tokens: readonly string[], now: Date = new Date()): Promise<ProvenToken[]> {
+  return (await classifyTokens(db, clubId, tokens, now)).proven;
+}
+
+/**
+ * Comme `proveTokens`, mais lève 401 si aucun jeton n'est valable :
+ * `PERSONAL_LINK_EXPIRED` si l'un d'eux est connu mais échu (7 jours),
+ * `INVALID_PERSONAL_LINK` sinon.
+ */
+export async function proveTokensOrThrow(db: DbClient, clubId: string, tokens: readonly string[], now: Date = new Date()): Promise<ProvenToken[]> {
+  const { proven, expired } = await classifyTokens(db, clubId, tokens, now);
+  if (proven.length > 0) return proven;
+  if (expired) throw unauthorized("Lien personnel expiré — demande-en un nouveau.", PERSONAL_LINK_EXPIRED_CODE);
+  throw unauthorized("Lien personnel invalide ou révoqué.", "INVALID_PERSONAL_LINK");
+}
+
+async function classifyTokens(db: DbClient, clubId: string, tokens: readonly string[], now: Date): Promise<{ proven: ProvenToken[]; expired: boolean }> {
+  const none = { proven: [], expired: false };
   const hashes = [...new Set(tokens.filter((t) => typeof t === "string" && t.length >= 8 && t.length <= 512))].slice(0, MAX_GRANTS).map(hashPublicToken);
-  if (hashes.length === 0) return [];
-  const { data } = await db.from("licencie_public_tokens").select("id, licencie_id, revoked_at").eq("club_id", clubId).in("token_hash", hashes).is("revoked_at", null);
-  const rows = (data ?? []) as TokenRow[];
+  if (hashes.length === 0) return none;
+  const { data } = await db.from("licencie_public_tokens").select("id, licencie_id, revoked_at, expires_at").eq("club_id", clubId).in("token_hash", hashes).is("revoked_at", null);
+  const all = (data ?? []) as TokenRow[];
+  const rows = all.filter((r) => !isPersonalLinkExpired(r.expires_at, now));
+  const expired = rows.length < all.length;
   const licencieIds = [...new Set(rows.map((r) => r.licencie_id))];
-  if (licencieIds.length === 0) return [];
+  if (licencieIds.length === 0) return { proven: [], expired };
   const { data: active } = await db.from("licencies").select("id").eq("club_id", clubId).in("id", licencieIds);
   const known = new Set(((active ?? []) as { id: string }[]).map((l) => l.id));
-  return rows.filter((r) => known.has(r.licencie_id)).map((r) => ({ tokenId: r.id, licencieId: r.licencie_id }));
+  return { proven: rows.filter((r) => known.has(r.licencie_id)).map((r) => ({ tokenId: r.id, licencieId: r.licencie_id })), expired };
 }
 
 /** Jetons encore actifs parmi ces identifiants (code d'autorisation consommé plus tard). */
-export async function provenFromTokenIds(db: DbClient, clubId: string, tokenIds: readonly string[]): Promise<ProvenToken[]> {
+export async function provenFromTokenIds(db: DbClient, clubId: string, tokenIds: readonly string[], now: Date = new Date()): Promise<ProvenToken[]> {
   if (tokenIds.length === 0) return [];
-  const { data } = await db.from("licencie_public_tokens").select("id, licencie_id, revoked_at").eq("club_id", clubId).in("id", [...tokenIds]).is("revoked_at", null);
-  return ((data ?? []) as TokenRow[]).map((r) => ({ tokenId: r.id, licencieId: r.licencie_id }));
+  const { data } = await db.from("licencie_public_tokens").select("id, licencie_id, revoked_at, expires_at").eq("club_id", clubId).in("id", [...tokenIds]).is("revoked_at", null);
+  return ((data ?? []) as TokenRow[]).filter((r) => !isPersonalLinkExpired(r.expires_at, now)).map((r) => ({ tokenId: r.id, licencieId: r.licencie_id }));
 }
 
 export async function createDeviceSession(
