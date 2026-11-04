@@ -34,6 +34,12 @@ export const LicencieDtoSchema = z
     publicCoordinator: z.boolean(),
     /** Équipes COACHÉES (accueil coach de l'espace public) — distinct de `teamId` (équipe où il joue). */
     coachedTeamIds: z.array(z.string().uuid()),
+    /**
+     * `true` UNIQUEMENT quand les champs sensibles (`birthDate`, `email`, `phone`, `licenseNumber`, `ffbbLicenceId`)
+     * sont masqués pour ce lecteur : un `null` n'est alors pas « non renseigné » mais « non visible pour vous ».
+     * Absent quand le lecteur voit la fiche en entier (là, `null` = vraiment non renseigné).
+     */
+    sensitiveHidden: z.boolean().optional(),
   })
   .openapi("LicencieDto");
 

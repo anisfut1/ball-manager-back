@@ -35,7 +35,9 @@ const SENSITIVE = ["birthDate", "email", "phone", "licenseNumber", "ffbbLicenceI
 
 function expectRedacted(out: LicencieDto, original: LicencieDto) {
   for (const key of SENSITIVE) expect(out[key]).toBeNull();
-  const { birthDate: _b, email: _e, phone: _p, licenseNumber: _l, ffbbLicenceId: _f, ...rest } = out;
+  // Signal explicite pour les clients : « masqué » ≠ « non renseigné » (W4).
+  expect(out.sensitiveHidden).toBe(true);
+  const { birthDate: _b, email: _e, phone: _p, licenseNumber: _l, ffbbLicenceId: _f, sensitiveHidden: _s, ...rest } = out;
   const { birthDate: _b2, email: _e2, phone: _p2, licenseNumber: _l2, ffbbLicenceId: _f2, ...restOriginal } = original;
   expect(rest).toEqual(restOriginal);
 }
@@ -117,5 +119,26 @@ describe("redactLicencieForViewer", () => {
     const original = dto({ email: null, phone: null, birthDate: null });
     const out = redactLicencieForViewer(original, viewer());
     expectRedacted(out, original);
+  });
+});
+
+describe("sensitiveHidden — masqué ≠ non renseigné (W4)", () => {
+  it("absent quand le viewer voit la fiche en entier (privilégié, soi-même, coach de l'équipe)", () => {
+    const own = dto({ teamId: null });
+    expect(redactLicencieForViewer(own, viewer({ ownLicencieId: own.id }))).not.toHaveProperty("sensitiveHidden");
+    expect(redactLicencieForViewer(dto(), viewer({ privileged: true }))).not.toHaveProperty("sensitiveHidden");
+    expect(redactLicencieForViewer(dto(), viewer({ coachTeamIds: new Set([T3]) }))).not.toHaveProperty("sensitiveHidden");
+  });
+
+  it("présent et vrai quand la fiche est masquée, même si la valeur d'origine était déjà null (licence réellement absente)", () => {
+    const noLicence = dto({ licenseNumber: null });
+    expect(redactLicencieForViewer(noLicence, viewer())).toMatchObject({ licenseNumber: null, sensitiveHidden: true });
+  });
+
+  it("un numéro réellement absent reste distinguable : visible + null, sans drapeau", () => {
+    const noLicence = dto({ licenseNumber: null, teamId: null });
+    const out = redactLicencieForViewer(noLicence, viewer({ privileged: true }));
+    expect(out.licenseNumber).toBeNull();
+    expect(out).not.toHaveProperty("sensitiveHidden");
   });
 });

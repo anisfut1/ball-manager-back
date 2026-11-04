@@ -35,8 +35,11 @@ export function canViewSensitive(licencie: Pick<LicencieDto, "id" | "teamId">, v
   return viewer.coachTeamIds === "ALL" || viewer.coachTeamIds.has(licencie.teamId);
 }
 
-/** Fiche telle que ce viewer a le droit de la lire : champs sensibles à `null` sinon. */
+/**
+ * Fiche telle que ce viewer a le droit de la lire : champs sensibles à `null` sinon, avec
+ * `sensitiveHidden: true` pour que les clients distinguent « masqué » de « non renseigné ».
+ */
 export function redactLicencieForViewer(licencie: LicencieDto, viewer: LicencieViewer): LicencieDto {
   if (canViewSensitive(licencie, viewer)) return licencie;
-  return { ...licencie, birthDate: null, email: null, phone: null, licenseNumber: null, ffbbLicenceId: null };
+  return { ...licencie, birthDate: null, email: null, phone: null, licenseNumber: null, ffbbLicenceId: null, sensitiveHidden: true };
 }

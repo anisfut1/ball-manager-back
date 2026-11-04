@@ -270,3 +270,7 @@ et faut que tout soit pour les nuls »*.
 - Simulation sur la base réelle avant mise en service (fichier du club du
   2026-10-08, 190 licences validées) : 9 nouveaux, 1 fiche rattachée par
   numéro de licence, 180 inchangés, 0 absent.
+
+## `sensitiveHidden` : « masqué » n'est pas « non renseigné » (W4)
+
+Pour un lecteur sans droit sur la fiche (voir `redact.ts`), `birthDate`, `email`, `phone`, `licenseNumber` et `ffbbLicenceId` valent `null`. Pour que les clients ne les confondent pas avec une donnée réellement absente, `LicencieDto.sensitiveHidden` vaut `true` **uniquement** sur ces fiches masquées. Il est absent quand le lecteur voit la fiche en entier : un `licenseNumber` à `null` y signifie « non renseigné ». Champ optionnel, donc sans effet sur les clients qui l'ignorent.
