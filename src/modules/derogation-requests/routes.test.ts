@@ -378,7 +378,7 @@ describe("aucune écriture externe (§94, §106)", () => {
 // ---------------------------------------------------------------------------
 // Espace public sans compte : rôles posés depuis /joueurs (retour du club,
 // 2026-10-01 : « comme on a fait pour l'admin, on le fait pour les coachs et
-// coordinateurs »), lien personnel `?token=` sur chaque requête.
+// coordinateurs »), lien personnel (en-tête `X-Personal-Link-Token`) sur chaque requête.
 // ---------------------------------------------------------------------------
 const { hashPublicToken } = await import("../public-tables/token.js");
 
@@ -391,10 +391,10 @@ function giveToken(licencieId: string, token: string) {
 }
 
 function publicRequest(path: string, token: string | null, init: { method?: string; body?: unknown } = {}) {
-  const sep = path.includes("?") ? "&" : "?";
-  return app.request(`/v1/public/clubs/${CLUB_A.slug}/derogation-requests${path}${token ? `${sep}token=${token}` : ""}`, {
+  // Le jeton personnel ne voyage plus qu'en en-tête (le back n'accepte plus `?token=`).
+  return app.request(`/v1/public/clubs/${CLUB_A.slug}/derogation-requests${path}`, {
     method: init.method ?? "GET",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...(token ? { "x-personal-link-token": token } : {}) },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
   });
 }

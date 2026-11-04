@@ -130,15 +130,16 @@ export const PublicTableAssignmentsListDtoSchema = z
 
 export const PublicTableAssignmentsQueryDtoSchema = z
   .object({
-    /** Lien personnel (web). Facultatif avec une session d'appareil (`Authorization: Bearer bmd_…`) ou l'en-tête `X-Personal-Link-Token`. */
-    token: z.string().min(1, "token manquant.").optional(),
     from: z.string().datetime({ offset: true }).optional(),
     to: z.string().datetime({ offset: true }).optional(),
   })
   .openapi("PublicTableAssignmentsQueryDto");
 
-/** Lien personnel (web). Facultatif avec une session d'appareil (`Authorization: Bearer bmd_…`) ou l'en-tête `X-Personal-Link-Token`. */
-export const PublicTokenQueryDtoSchema = z.object({ token: z.string().min(1, "token manquant.").optional() }).openapi("PublicTokenQueryDto");
+/**
+ * Aucun paramètre d'URL : le lien personnel ne voyage plus qu'en en-tête `X-Personal-Link-Token`
+ * (ou session d'appareil `Authorization: Bearer bmd_…`). `?token=` n'est plus accepté ni documenté.
+ */
+export const PublicTokenQueryDtoSchema = z.object({}).openapi("PublicTokenQueryDto");
 
 export const PublicAssignRoleQueryDtoSchema = PublicTokenQueryDtoSchema.extend({ role: TableAssignmentRoleSchema });
 

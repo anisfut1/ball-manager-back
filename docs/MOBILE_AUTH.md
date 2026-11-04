@@ -10,7 +10,7 @@ L'app reçoit une **session d'appareil** (`device_sessions`) : c'est une preuve 
 
 | | Lien personnel (web) | Session d'appareil (app) |
 |---|---|---|
-| Transport | `X-Personal-Link-Token` (recommandé) ou `?token=` | `Authorization: Bearer bmd_…` et `X-BM-As: <licencieId>` |
+| Transport | `X-Personal-Link-Token` uniquement (`?token=` n'est plus accepté) | `Authorization: Bearer bmd_…` et `X-BM-As: <licencieId>` |
 | Stockage | cookie `bm_session` HttpOnly chiffré (ball-manager-web) | Keychain iOS (`AfterFirstUnlockThisDeviceOnly`) |
 | Durée | jusqu'à révocation ou rotation | 180 jours **glissants** |
 | Révocation | réinitialisation admin, ou nouveau lien | déconnexion, réinitialisation admin du lien, ou expiration |

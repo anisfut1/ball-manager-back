@@ -168,10 +168,11 @@ describe("session d'appareil (amorçage par lien personnel)", () => {
     expect(body.invalidTokenIndexes).toEqual([1]);
   });
 
-  it("le web reste inchangé : ?token= et l'en-tête X-Personal-Link-Token", async () => {
-    expect((await pub("club-a", "/me?token=token-lina-0000")).status).toBe(200);
+  it("le web envoie le jeton dans l'en-tête X-Personal-Link-Token ; ?token= n'est PLUS accepté", async () => {
     expect((await pub("club-a", "/me", { headers: { "x-personal-link-token": "token-lina-0000" } })).status).toBe(200);
     expect((await pub("club-a", "/me")).status).toBe(400);
+    // Un jeton VALIDE dans l'URL est ignoré : même réponse que sans jeton (jamais journalisé dans une URL).
+    expect((await pub("club-a", "/me?token=token-lina-0000")).status).toBe(400);
   });
 });
 

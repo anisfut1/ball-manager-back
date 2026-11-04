@@ -1175,17 +1175,17 @@ registry.registerPath({
 
 /**
  * Identité de l'espace public (src/modules/public/credential.ts) : lien
- * personnel en `?token=` (web historique) OU en-tête `X-Personal-Link-Token`
- * OU session d'appareil (`Authorization: Bearer bmd_…` + `X-BM-As`, apps
- * mobiles). Le paramètre est donc FACULTATIF dans le contrat.
+ * personnel en en-tête `X-Personal-Link-Token` OU session d'appareil
+ * (`Authorization: Bearer bmd_…` + `X-BM-As`, apps mobiles). Le paramètre
+ * `?token=` n'est PLUS accepté (journaux, Referer, historique) : il ne figure
+ * donc plus dans le contrat. L'objet est conservé, vide, car les routes
+ * l'étendent (`.extend({ from, to, … })`).
  */
-const personalTokenQuery = z.object({
-  token: z.string().min(1).optional().openapi({ description: "Lien personnel (web). Facultatif avec l'en-tête X-Personal-Link-Token ou une session d'appareil (Authorization: Bearer bmd_… + X-BM-As)." }),
-});
+const personalTokenQuery = z.object({});
 
 /**
  * Mêmes demandes depuis l'ESPACE PUBLIC sans compte : licencié reconnu par
- * son lien personnel (`?token=` sur chaque requête), rôles posés depuis
+ * son lien personnel (en-tête `X-Personal-Link-Token` sur chaque requête), rôles posés depuis
  * /joueurs (`public_coach`, `public_coordinator`, `public_admin`).
  */
 const publicTokenQuery = personalTokenQuery;
