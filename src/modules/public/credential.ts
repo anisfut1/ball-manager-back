@@ -12,8 +12,8 @@ import { resolveDeviceSession, type ResolvedDeviceSession } from "../device-auth
  *     `X-BM-As: <licencieId>` pour choisir la personne active parmi celles
  *     de la session (parent avec plusieurs enfants). Sans `X-BM-As` : la
  *     première personne de la session.
- *  2. Lien personnel (web, inchangé) : en-tête `X-Personal-Link-Token`
- *     (prioritaire, jamais journalisé dans une URL) ou `?token=`.
+ *  2. Lien personnel (web) : en-tête `X-Personal-Link-Token` UNIQUEMENT
+ *     (jamais journalisé dans une URL). `?token=` n'est plus accepté.
  *
  * Mêmes règles de droits ensuite : la personne résolue est exactement celle
  * qu'aurait donnée son lien personnel.
@@ -40,7 +40,8 @@ export function bearerSessionSecret(req: RequestLike): string | null {
 }
 
 export function personalTokenFrom(req: RequestLike): string | null {
-  return req.header(PERSONAL_LINK_HEADER) || req.query("token") || null;
+  // `?token=` n'est plus accepté : un jeton dans l'URL se retrouve dans les journaux, le Referer et l'historique.
+  return req.header(PERSONAL_LINK_HEADER) || null;
 }
 
 /** Session d'appareil de la requête (`null` sans en-tête), 401 si présente mais invalide. */

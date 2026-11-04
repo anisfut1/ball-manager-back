@@ -154,6 +154,16 @@ describe("generateOpenApiDocument", () => {
     expect(required).toEqual([]);
   });
 
+  it("espace public : plus aucun paramètre `token` en query — le lien personnel ne voyage qu'en en-tête X-Personal-Link-Token", () => {
+    const withToken: string[] = [];
+    for (const [path, methods] of Object.entries(doc.paths)) {
+      for (const [method, op] of Object.entries(methods as Record<string, { parameters?: { name: string; in?: string }[] }>)) {
+        if ((op.parameters ?? []).some((p) => p.name === "token" && p.in === "query")) withToken.push(`${method} ${path}`);
+      }
+    }
+    expect(withToken).toEqual([]);
+  });
+
   it("génère un document valide (openapi 3.0.0, titre, au moins 15 routes)", () => {
     expect(doc.openapi).toBe("3.0.0");
     expect(doc.info.title).toBe("ball-manager-back");

@@ -100,8 +100,26 @@ const THOMAS: FakeLicencieRow = {
 };
 const LEA: FakeLicencieRow = { ...THOMAS, id: "licencie-lea", first_name: "Léa", last_name: "Fontaine" };
 
+/**
+ * Le back n'accepte plus le jeton en `?token=` (lot « retrait de ?token= »). Les tests écrivent encore
+ * `…?token=X` pour dire « avec ce jeton » : cette aide le déplace dans l'en-tête `X-Personal-Link-Token`,
+ * la SEULE voie acceptée. Le refus de `?token=` est testé à part (« ?token= n'est plus accepté »).
+ */
+function tokenAsHeader(path: string, init: RequestInit): { path: string; init: RequestInit } {
+  const [pathname = "", query = ""] = path.split("?");
+  const params = new URLSearchParams(query);
+  const token = params.get("token");
+  if (token === null) return { path, init };
+  params.delete("token");
+  const rest = params.toString();
+  const headers = new Headers(init.headers);
+  headers.set("x-personal-link-token", token);
+  return { path: rest ? `${pathname}?${rest}` : pathname, init: { ...init, headers } };
+}
+
 function request(path: string, init: RequestInit = {}) {
-  return app.request(`/v1/public/clubs/club-a${path}`, init);
+  const converted = tokenAsHeader(path, init);
+  return app.request(`/v1/public/clubs/club-a${converted.path}`, converted.init);
 }
 
 function requestLink(licencieId: string, body: { email?: string | null; returnTo?: string } = {}, slug = "club-a") {
@@ -411,7 +429,7 @@ describe("GET .../derogations?token= — retour du club : dérogations publiques
 describe("Le jeton n'authentifie que SON club — jamais un autre, même avec un slug connu", () => {
   it("un jeton du club A échoue sur les routes du club B", async () => {
     const token = await claim(THOMAS.id);
-    const res = await app.request(`/v1/public/clubs/club-b/me?token=${token}`);
+    const res = await app.request("/v1/public/clubs/club-b/me", { headers: { "x-personal-link-token": token } });
     expect(res.status).toBe(401);
   });
 });
