@@ -58,7 +58,13 @@ describe("limites de taille des corps (S-12b) — middleware seul, avec espion",
     expect((await mini.request("/v1/clubs/c1/licencies/import/file/autre", { method: "POST", body: big })).status).toBe(413);
   });
 
-  it("la limite du fichier FBI couvre le plafond du handler (5 Mo) plus l'enveloppe multipart", () => {
+  it("tout le corps accepté tient sous la limite de Vercel (4,5 Mo) : sinon Vercel coupe avant la fonction, erreur opaque (B6)", () => {
+    const VERCEL_BODY_LIMIT_BYTES = 4_500_000; // lecture la plus stricte de « 4,5 Mo »
+    expect(FBI_EXPORT_BODY_LIMIT_BYTES).toBeLessThan(VERCEL_BODY_LIMIT_BYTES);
+    expect(MAX_EXPORT_BYTES).toBe(4 * 1024 * 1024);
+  });
+
+  it("la limite du fichier FBI couvre le plafond du handler (4 Mio) plus l'enveloppe multipart", () => {
     expect(FBI_EXPORT_BODY_LIMIT_BYTES).toBeGreaterThan(MAX_EXPORT_BYTES);
     expect(FBI_EXPORT_BODY_LIMIT_BYTES - MAX_EXPORT_BYTES).toBeLessThanOrEqual(256 * 1024);
   });
