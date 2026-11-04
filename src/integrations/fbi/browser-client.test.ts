@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
+import os from "node:os";
 import { chromium, type Browser } from "playwright-core";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +21,8 @@ beforeAll(async () => {
   // `playwright-core install chromium` a téléchargé (CI GitHub).
   const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH ?? (existsSync(CLOUD_CHROMIUM) ? CLOUD_CHROMIUM : undefined);
   browser = await chromium.launch({ headless: true, executablePath });
+  // DIAGNOSTIC TEMPORAIRE (branche diag/browser-hang)
+  console.log(`DIAG chromium=${browser.version()} cpus=${os.cpus().length} mem=${Math.round(os.totalmem() / 1e6)}Mo CI=${process.env.CI ?? ""}`);
   server = new TestServer();
   await server.start();
 });
