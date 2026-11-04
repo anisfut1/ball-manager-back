@@ -45,7 +45,7 @@ export class LicenceExportError extends Error {
 }
 
 /** Fichier plus gros que ça : ce n'est pas un export de club (190 licences ≈ 18 Ko). */
-export const MAX_EXPORT_BYTES = 5 * 1024 * 1024;
+export const MAX_EXPORT_BYTES = 4 * 1024 * 1024;
 
 type Column = "ffbbLicenceId" | "licenseNumber" | "lastName" | "firstName" | "birthDate" | "categoryLabel" | "sexe";
 
