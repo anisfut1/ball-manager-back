@@ -18,7 +18,7 @@ jobs:
   verify:
     name: Lint, typecheck, tests, build, audit
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     # Valeurs FACTICES : aucun secret en CI. Les tests ne contactent ni Supabase ni FBI ;
     # elles ne servent qu'à satisfaire le schéma de src/config/env.ts. Domaine `.invalid`
     # (jamais résolu), chaînes de longueur suffisante, clé AES-256 = 32 octets de 0x07.
@@ -54,10 +54,13 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Installer Chromium (tests du client navigateur FBI)
+        # Navigateur de la version de playwright-core du lockfile, avec ses bibliothèques système.
+        timeout-minutes: 5
+        run: npx playwright-core install --with-deps chromium
+
       - name: Tests
-        # browser-client.test.ts est EXCLU : il lance Chromium (absent du runner) et contient une
-        # vraie assertion en échec, à traiter dans le lot dédié à ce test. Seule exclusion permise.
-        run: npm test -- --exclude src/integrations/fbi/browser-client.test.ts
+        run: npm test
 
       - name: Build
         run: npm run build

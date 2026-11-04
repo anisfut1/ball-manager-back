@@ -9,6 +9,7 @@ import type { DerogationCreationRequest, DerogationResponseDecision, DerogationR
 import { logInfo } from "../../logger.js";
 import { emarqueDownloadUrl, executeSearchQuery, parseSearchResponse, pickRow, searchFormFields } from "./emarque-search.js";
 import { fbiProxySettings, probeFbiProxy } from "./browser-launcher.js";
+import { readBodyWithin } from "./body-snippet.js";
 
 /**
  * Délais maximum des requêtes vers FBI (2026-10-06) : un `fetch` lancé
@@ -20,6 +21,8 @@ const FBI_IN_PAGE_REQUEST_TIMEOUT_MS = 30_000;
 const FBI_IN_PAGE_DOWNLOAD_TIMEOUT_MS = 40_000;
 const FBI_NAVIGATION_DOWNLOAD_TIMEOUT_MS = 30_000;
 const FBI_NODE_REQUEST_TIMEOUT_MS = 20_000;
+/** Délai max de lecture du corps d'une réponse capturée pour le diagnostic (la page peut naviguer avant la fin). */
+const CAPTURE_BODY_TIMEOUT_MS = 1_500;
 const SKIPPED_RESOURCE_TYPES = new Set(["image", "font", "media"]);
 /**
  * Session « légère » (récupération e-Marque, 2026-10-07) : une fois la page
@@ -1154,7 +1157,7 @@ export class BrowserFbiClient {
         const req = response.request();
         if (req.resourceType() !== "xhr" && req.resourceType() !== "fetch" && req.method() !== "POST") return;
         const postData = req.postData();
-        const bodySnippet = await response.text().catch(() => null);
+        const bodySnippet = await readBodyWithin(() => response.text(), CAPTURE_BODY_TIMEOUT_MS);
         capturedRequests.push(
           `${req.method()} ${response.url()} → HTTP ${response.status()}` +
             (postData ? ` | corps envoyé (${postData.length} car.) : ${postData.slice(0, 800)}` : " | aucun corps envoyé") +
@@ -1297,7 +1300,7 @@ export class BrowserFbiClient {
         const req = response.request();
         if (req.resourceType() !== "xhr" && req.resourceType() !== "fetch" && req.method() !== "POST") return;
         const postData = req.postData();
-        const bodySnippet = await response.text().catch(() => null);
+        const bodySnippet = await readBodyWithin(() => response.text(), CAPTURE_BODY_TIMEOUT_MS);
         capturedRequests.push(
           `${req.method()} ${response.url()} → HTTP ${response.status()}` +
             (postData ? ` | corps envoyé (${postData.length} car.) : ${postData.slice(0, 500)}` : " | aucun corps envoyé") +

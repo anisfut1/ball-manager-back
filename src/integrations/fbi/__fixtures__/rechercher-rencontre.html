@@ -175,12 +175,25 @@
       </div>
     </form>
     <script>
-      // Beacon fire-and-forget (ne bloque jamais la soumission GET normale
-      // du formulaire) — reproduit, pour les tests, qu'un clic sur
-      // "Rechercher" déclenche AUSSI une requête réseau, comme sur le vrai
-      // FBI (§ "Vingt-septième déclenchement", docs/FBI.md).
-      document.querySelector('button[type="submit"]').addEventListener("click", function () {
-        fetch("/telemetry-beacon", { method: "POST", body: JSON.stringify({ event: "search_click" }) });
+      // Beacon déclenché au clic sur "Rechercher" — reproduit, pour les tests,
+      // qu'un clic déclenche AUSSI une requête réseau, comme sur le vrai FBI
+      // (§ "Vingt-septième déclenchement", docs/FBI.md).
+      // La soumission GET du formulaire est différée jusqu'à la réponse du
+      // beacon (ou 1 s au plus, jamais bloquée) : les Chrome récents annulent
+      // un fetch() encore en vol dès que la navigation démarre, même avec
+      // `keepalive`, et aucune réponse n'était alors observable (B3).
+      var searchButton = document.querySelector('button[type="submit"]');
+      searchButton.addEventListener("click", function (event) {
+        event.preventDefault();
+        var form = searchButton.form;
+        var submitted = false;
+        function submitOnce() {
+          if (submitted) return;
+          submitted = true;
+          form.submit();
+        }
+        fetch("/telemetry-beacon", { method: "POST", body: JSON.stringify({ event: "search_click" }) }).then(submitOnce, submitOnce);
+        setTimeout(submitOnce, 1000);
       });
     </script>
     <table>
