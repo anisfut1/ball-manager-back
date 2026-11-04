@@ -54,3 +54,13 @@ La RLS empêche une fuite de données. Elle n'empêche pas un mauvais
 paramètre de route de renvoyer un 404 plutôt qu'un 403 de façon cohérente,
 ni de composer proprement `requireClubRole` par-dessus `requireClubMembership`.
 C'est le rôle de `src/auth/middleware.ts` — voir `docs/AUTH.md`.
+
+## Droits SQL de `anon` et `authenticated` (lot B1, 2026-11)
+
+La RLS filtre les lignes de SELECT/INSERT/UPDATE/DELETE mais **pas** `TRUNCATE`, `REFERENCES` ni `TRIGGER`. Depuis la migration `20261104100000_revoke_anon_writes_and_truncate.sql` :
+
+- `anon` n'a plus aucune écriture sur `public`, sauf `INSERT` sur `fbi_probe_events` (journal du worker FBI, policy à jeton). Les espaces publics passent par le back en `service_role`.
+- `authenticated` n'a plus `TRUNCATE`, `REFERENCES` ni `TRIGGER`. Ses écritures ordinaires restent permises sous RLS (les routes écrivent au nom de l'utilisateur).
+- Les droits par défaut du rôle `postgres` sont alignés : les tables créées plus tard héritent de ces restrictions.
+
+Garde-fou : `src/db/privileges-migration.test.ts`. Un nouveau `grant` à `anon` en écriture, ou de `truncate` à `authenticated`, dans une migration ultérieure fait échouer les tests.
