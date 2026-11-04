@@ -1341,7 +1341,7 @@ relayer un log) pour la rencontre n°1481. La capture réseau du clic sur
    réponse JSON `{"iTotalRecords":1,"aaData":[[...]]}` contenant la ligne
    RÉELLE du match 1481 (équipes, date, score). La colonne EM contient :
    `<a class="emarquepictureafter emarqueV2200000013858788"
-   onclick="telechargerMatch('hpSiYXprCd6ZgGhweKzIfw%3D%3D','200000013858788')">`
+   onclick="telechargerMatch('AAAAAAAAAAAAAAAAAAAAAA%3D%3D','200000013858788')">`
    — **aucun `href`**, juste un gestionnaire `onclick` JS.
 
 La trace confirme que `emarqueColumnLinkForMatch` a bien trouvé CE lien et
@@ -1384,7 +1384,7 @@ a immédiatement porté ses fruits, lue directement en base :
 ```
 téléchargement natif déclenché : url=https://extranet.ffbb.com/fbi/
 telechargerFeuilleMatchEmarque.fbi?action=emV2&plugin=true&idRenc=
-hpSiYXprCd6ZgGhweKzIfw%3D%3D, nom suggéré="OCC_RF2_MED_1481_SPORT_CLUB_DE
+AAAAAAAAAAAAAAAAAAAAAA%3D%3D, nom suggéré="OCC_RF2_MED_1481_SPORT_CLUB_DE
 _SETE_BASKET_LA_CROIX_D_ARGENT_B_MONTPELLIER-2.zip"
 ```
 
