@@ -60,7 +60,13 @@ jobs:
         run: npx playwright-core install --with-deps chromium
 
       - name: Tests
-        run: npm test
+        run: npm test -- --exclude src/integrations/fbi/browser-client.test.ts
+
+      - name: Tests du client navigateur FBI (Chromium, 2 nouvelles tentatives)
+        # Bloc fetchAllDerogations : blocages INTERMITTENTS de 30 s sur le runner (observés en CI, jamais
+        # reproduits en local, cause non identifiée). Une régression réelle échoue à chaque tentative et
+        # reste détectée ; un blocage ponctuel ne rend plus rouge une PR sans rapport.
+        run: npx vitest run src/integrations/fbi/browser-client.test.ts --retry 2
 
       - name: Build
         run: npm run build
