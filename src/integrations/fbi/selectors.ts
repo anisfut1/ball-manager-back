@@ -475,20 +475,24 @@ export async function resultsTableGenericRows(scope: Page | Locator): Promise<Re
   const headerTexts = (await headerCells.allTextContents().catch(() => [])).map((t) => t.trim());
   if (headerTexts.length === 0 || headerTexts.every((t) => t === "")) return null;
 
-  const rows = scope.locator("table tbody tr");
-  const rowCount = await rows.count().catch(() => 0);
-  const results: Record<string, string>[] = [];
+  // Instantané UNIQUE de toutes les cellules (un seul aller-retour, sans attente automatique de Playwright).
+  // Lire cellule par cellule avec `locator.textContent()` attendait jusqu'à 30 s une cellule disparue quand
+  // l'AJAX de FBI rafraîchissait le tableau entre le `count()` et la lecture (blocages intermittents de
+  // fetchAllDerogations sur Chromium 156 en CI, B3). `evaluateAll` sur zéro ligne renvoie [] sans attendre.
+  const grid = await scope
+    .locator("table tbody tr")
+    .evaluateAll((trs) => trs.map((tr) => Array.from(tr.querySelectorAll("td")).map((td) => td.textContent ?? "")))
+    .catch(() => [] as string[][]);
 
-  for (let i = 0; i < rowCount; i += 1) {
-    const cells = rows.nth(i).locator("td");
-    const cellCount = await cells.count().catch(() => 0);
-    if (cellCount === 0) continue;
+  const results: Record<string, string>[] = [];
+  for (const cells of grid) {
+    if (cells.length === 0) continue;
 
     const record: Record<string, string> = {};
-    for (let col = 0; col < Math.min(cellCount, headerTexts.length); col += 1) {
+    for (let col = 0; col < Math.min(cells.length, headerTexts.length); col += 1) {
       const header = headerTexts[col];
       if (!header) continue;
-      record[header] = ((await cells.nth(col).textContent().catch(() => "")) ?? "").trim();
+      record[header] = (cells[col] ?? "").trim();
     }
     results.push(record);
   }
