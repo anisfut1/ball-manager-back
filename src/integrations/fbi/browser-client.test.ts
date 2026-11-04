@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { existsSync } from "node:fs";
 import { chromium, type Browser } from "playwright-core";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,11 +10,16 @@ import { FbiError } from "./errors.js";
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string) => readFixture(path.join(dirname, "__fixtures__", name));
 
+const CLOUD_CHROMIUM = "/opt/pw-browsers/chromium";
+
 let browser: Browser;
 let server: TestServer;
 
 beforeAll(async () => {
-  browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH ?? "/opt/pw-browsers/chromium" });
+  // Chromium : variable d'environnement, sinon l'installation partagée des sessions cloud, sinon celui que
+  // `playwright-core install chromium` a téléchargé (CI GitHub).
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH ?? (existsSync(CLOUD_CHROMIUM) ? CLOUD_CHROMIUM : undefined);
+  browser = await chromium.launch({ headless: true, executablePath });
   server = new TestServer();
   await server.start();
 });
