@@ -236,6 +236,9 @@ export interface FakeRefereeOverrideRow {
   updated_at?: string;
 }
 
+/** Échéance des lignes de test qui n'en déclarent pas. */
+const NEVER_EXPIRES = "2999-01-01T00:00:00.000Z";
+
 export interface FakePublicTokenRow {
   id: string;
   club_id: string;
@@ -246,6 +249,8 @@ export interface FakePublicTokenRow {
   created_at: string;
   revoked_at: string | null;
   revoked_by: string | null;
+  /** Absent = ligne de test historique, jamais expirée (la colonne réelle est NOT NULL, défaut now()+7 j). */
+  expires_at?: string;
 }
 
 export interface FakeFbiJobRow {
@@ -915,7 +920,7 @@ export function buildFakeClubSupabase(state: FakeClubSupabaseState): any {
   };
 
   const publicTokensTable = {
-    select: (_cols?: string) => queryable(state.publicTokens),
+    select: (_cols?: string) => queryable(state.publicTokens.map((t) => ({ expires_at: NEVER_EXPIRES, ...t }))),
     // Simule les 2 index uniques de la migration (club_id+licencie_id PARTIEL sur actifs, et token_hash) — jamais un simple push sans vérification.
     insert: (row: Partial<FakePublicTokenRow> & { club_id: string; licencie_id: string; token_hash: string }) => {
       const activeLicencieDuplicate = state.publicTokens.some((t) => t.club_id === row.club_id && t.licencie_id === row.licencie_id && t.revoked_at === null);
@@ -923,7 +928,7 @@ export function buildFakeClubSupabase(state: FakeClubSupabaseState): any {
       if (activeLicencieDuplicate || tokenHashDuplicate) return Promise.resolve({ error: { code: "23505", message: "duplicate key value violates unique constraint" } });
 
       // Identifiant dérivé de l'état partagé (pas d'un compteur local) : un client fake est reconstruit à chaque requête.
-      const created: FakePublicTokenRow = { id: `public-token-${state.publicTokens.length + 1}`, email: null, created_at: new Date().toISOString(), revoked_at: null, revoked_by: null, ...row };
+      const created: FakePublicTokenRow = { id: `public-token-${state.publicTokens.length + 1}`, email: null, created_at: new Date().toISOString(), revoked_at: null, revoked_by: null, expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), ...row };
       state.publicTokens.push(created);
       return Promise.resolve({ error: null });
     },

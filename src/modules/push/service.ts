@@ -1,5 +1,6 @@
 import type { DbClient } from "../../db/client.js";
 import { logError } from "../../logger.js";
+import { isPersonalLinkExpired } from "../public-tables/token.js";
 import { apnsConfig, createApnsSender, type PushEnvironment, type PushSender } from "./apns.js";
 
 /**
@@ -83,8 +84,8 @@ export async function pushTargets(db: DbClient, clubId: string, licencieIds: rea
   const grants = (grantRows ?? []) as { session_id: string; token_id: string }[];
   if (grants.length === 0) return [];
 
-  const { data: liveTokens } = await db.from("licencie_public_tokens").select("id").eq("club_id", clubId).in("id", [...new Set(grants.map((g) => g.token_id))]).is("revoked_at", null);
-  const live = new Set(((liveTokens ?? []) as { id: string }[]).map((t) => t.id));
+  const { data: liveTokens } = await db.from("licencie_public_tokens").select("id, expires_at").eq("club_id", clubId).in("id", [...new Set(grants.map((g) => g.token_id))]).is("revoked_at", null);
+  const live = new Set(((liveTokens ?? []) as { id: string; expires_at: string | null }[]).filter((t) => !isPersonalLinkExpired(t.expires_at, now)).map((t) => t.id));
   const sessionIds = [...new Set(grants.filter((g) => live.has(g.token_id)).map((g) => g.session_id))];
   if (sessionIds.length === 0) return [];
 

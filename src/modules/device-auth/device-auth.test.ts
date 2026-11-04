@@ -301,3 +301,48 @@ describe("administration du club dans l'app (compte du site, club_admin seulemen
   });
 });
 
+
+describe("expiration à 7 jours des liens personnels (lot 5b)", () => {
+  const expire = (tokenId: string) => {
+    state.publicTokens = state.publicTokens.map((t) => (t.id === tokenId ? { ...t, expires_at: "2026-10-11T07:59:59.000Z" } : t));
+  };
+
+  it("lien échu : 401 PERSONAL_LINK_EXPIRED, aucune session créée", async () => {
+    expire("tok-lina");
+    const res = await pub("club-a", "/auth/device-sessions", { method: "POST", body: { tokens: ["token-lina-0000"], platform: "ios" } });
+    expect(res.status).toBe(401);
+    expect((await json<{ error: { code: string } }>(res)).error.code).toBe("PERSONAL_LINK_EXPIRED");
+    expect(state.deviceSessions).toHaveLength(0);
+  });
+
+  it("lien tout juste valable : session créée", async () => {
+    state.publicTokens = state.publicTokens.map((t) => (t.id === "tok-lina" ? { ...t, expires_at: "2026-10-11T08:00:00.001Z" } : t));
+    await bootstrap();
+  });
+
+  it("lien inconnu : toujours INVALID_PERSONAL_LINK, jamais EXPIRED", async () => {
+    expire("tok-lina");
+    const res = await pub("club-a", "/auth/device-sessions", { method: "POST", body: { tokens: ["token-inconnu-00"], platform: "ios" } });
+    expect((await json<{ error: { code: string } }>(res)).error.code).toBe("INVALID_PERSONAL_LINK");
+  });
+
+  it("un lien échu est ignoré quand un autre est valable", async () => {
+    expire("tok-lina");
+    const session = await bootstrap(["token-lina-0000", "token-hugo-0000"]);
+    expect(session.people.map((p) => p.firstName)).toEqual(["Hugo"]);
+  });
+
+  it("ajout d'une personne avec un lien échu : 401 PERSONAL_LINK_EXPIRED", async () => {
+    const session = await bootstrap();
+    expire("tok-hugo");
+    const res = await pub("club-a", "/auth/session/people", { method: "POST", headers: bearer(session.sessionSecret), body: { tokens: ["token-hugo-0000"] } });
+    expect(res.status).toBe(401);
+    expect((await json<{ error: { code: string } }>(res)).error.code).toBe("PERSONAL_LINK_EXPIRED");
+  });
+
+  it("code d'autorisation : un lien échu entre-temps n'est plus échangeable", async () => {
+    const { provenFromTokenIds } = await import("./service.js");
+    expire("tok-lina");
+    expect(await provenFromTokenIds(buildFakeClubSupabase(state) as never, CLUB_A.id, ["tok-lina", "tok-hugo"])).toEqual([{ tokenId: "tok-hugo", licencieId: HUGO }]);
+  });
+});

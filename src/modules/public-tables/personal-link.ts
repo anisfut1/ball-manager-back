@@ -1,6 +1,6 @@
 import type { DbClient } from "../../db/client.js";
 import { decryptSecret, encryptSecret, type EncryptedPayload } from "../../security/crypto.js";
-import { generatePublicToken, hashPublicToken } from "./token.js";
+import { generatePublicToken, hashPublicToken, isPersonalLinkExpired } from "./token.js";
 import { links, type PersonalLinkTarget } from "../../links/links.js";
 
 /**
@@ -25,13 +25,13 @@ export function personalLinkUrl(baseUrl: string, clubSlug: string, target: Perso
 
 /**
  * Lien du licencié pour un club_admin : réaffiche le jeton ACTIF s'il est
- * déchiffrable (le lien déjà utilisé reste valable) ; sinon (aucun lien, ou
+ * déchiffrable et non expiré (7 jours) ; sinon (aucun lien, lien expiré, ou
  * lien émis avant le chiffrement) émet un nouveau jeton — l'éventuel ancien
  * est alors révoqué (seul cas où le lien change).
  */
 export async function revealOrIssueToken(db: DbClient, params: { clubId: string; licencieId: string; email: string | null; adminUserId: string }): Promise<{ token: string; created: boolean }> {
-  const { data: active } = await db.from("licencie_public_tokens").select("id, token_ciphertext").eq("club_id", params.clubId).eq("licencie_id", params.licencieId).is("revoked_at", null).maybeSingle();
-  if (active?.token_ciphertext) {
+  const { data: active } = await db.from("licencie_public_tokens").select("id, token_ciphertext, expires_at").eq("club_id", params.clubId).eq("licencie_id", params.licencieId).is("revoked_at", null).maybeSingle();
+  if (active?.token_ciphertext && !isPersonalLinkExpired(active.expires_at)) {
     try {
       return { token: decryptPublicToken(active.token_ciphertext as EncryptedPayload, params.clubId, params.licencieId), created: false };
     } catch {

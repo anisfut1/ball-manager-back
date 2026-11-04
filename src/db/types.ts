@@ -558,6 +558,7 @@ export interface Database {
           created_at: string;
           revoked_at: string | null;
           revoked_by: string | null;
+          expires_at: string;
         },
         {
           id?: string;
@@ -569,6 +570,7 @@ export interface Database {
           created_at?: string;
           revoked_at?: string | null;
           revoked_by?: string | null;
+          expires_at?: string;
         }
       >;
 

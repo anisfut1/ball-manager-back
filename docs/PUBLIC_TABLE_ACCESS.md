@@ -251,3 +251,12 @@ du code :
 
 Côté contenu (src/email/personal-link-email.ts) : version texte jointe, pas
 d'emoji, raison de l'envoi explicite, aucune formule alarmante.
+
+## Expiration des liens personnels (lot 5b, 2026-11)
+
+Un lien personnel est valable **7 jours** (`licencie_public_tokens.expires_at`, défaut `now() + 7 jours`).
+
+- Jeton connu mais échu : `401` avec le code `PERSONAL_LINK_EXPIRED` (web et app affichent « Lien expiré, demandez-en un nouveau »). Un jeton inconnu ou révoqué reste un `401` générique (`UNAUTHORIZED` / `INVALID_PERSONAL_LINK`).
+- Pas d'envoi automatique : le licencié en redemande un ; l'admin qui rouvre sa fiche obtient un nouveau lien (l'échu est révoqué, jamais réaffiché).
+- Un lien échu ne crée plus de session d'appareil, n'ajoute plus de personne à une session, ne peut plus être échangé contre un code d'autorisation et ne reçoit plus de notification push.
+- **Déploiement** : appliquer la migration `20261104090000_personal_link_expiry.sql` (`supabase db push`, après `--dry-run`) **avant** de déployer le back. Les liens déjà diffusés expirent 7 jours après la migration : date butoir pour livrer le lot 5c (web et app).
