@@ -260,3 +260,11 @@ Un lien personnel est valable **7 jours** (`licencie_public_tokens.expires_at`, 
 - Pas d'envoi automatique : le licencié en redemande un ; l'admin qui rouvre sa fiche obtient un nouveau lien (l'échu est révoqué, jamais réaffiché).
 - Un lien échu ne crée plus de session d'appareil, n'ajoute plus de personne à une session, ne peut plus être échangé contre un code d'autorisation et ne reçoit plus de notification push.
 - **Déploiement** : appliquer la migration `20261104090000_personal_link_expiry.sql` (`supabase db push`, après `--dry-run`) **avant** de déployer le back. Les liens déjà diffusés expirent 7 jours après la migration : date butoir pour livrer le lot 5c (web et app).
+
+## Transport du jeton : `?token=` n'est plus accepté par l'API
+
+Le lien personnel ne voyage plus **que** dans l'en-tête `X-Personal-Link-Token` (ou, pour l'app, une session d'appareil `Authorization: Bearer bmd_…` + `X-BM-As`). Un jeton placé dans l'URL d'un appel d'API est **ignoré** : la réponse est la même que sans jeton (400 sur `/me`). Raison : une URL est journalisée (Vercel, proxys), copiée, conservée dans l'historique et le `Referer`.
+
+Dans le reste de cette documentation, `…?token=` est la notation historique d'une route : lire « avec l'en-tête `X-Personal-Link-Token` ». Ne change pas : le **lien envoyé par e-mail** (`/public/{slug}/{cible}?token=…`), qui est l'adresse d'une page du site, que le web lit puis retire de la barre d'adresse.
+
+Le web envoie l'en-tête par défaut depuis le lot 5c (le repli `NEXT_PUBLIC_PUBLIC_TOKEN_HEADER=0` vers `?token=` ne fonctionne donc plus). Le paramètre a aussi disparu du contrat OpenAPI.

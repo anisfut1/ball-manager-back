@@ -35,8 +35,8 @@ function club(path: string, init: { method?: string; body?: unknown } = {}) {
   return app.request(`/v1/clubs/${CLUB_A.id}/team-life${path}`, { method: init.method ?? "GET", headers: { authorization: "Bearer t", "content-type": "application/json" }, body: init.body === undefined ? undefined : JSON.stringify(init.body) });
 }
 function pub(path: string, init: { method?: string; body?: unknown; token?: string; slug?: string } = {}) {
-  const q = init.token ? `${path.includes("?") ? "&" : "?"}token=${init.token}` : "";
-  return app.request(`/v1/public/clubs/${init.slug ?? "club-a"}/team-life${path}${q}`, { method: init.method ?? "GET", headers: { "content-type": "application/json" }, body: init.body === undefined ? undefined : JSON.stringify(init.body) });
+  // Le jeton personnel ne voyage plus qu'en en-tête (le back n'accepte plus `?token=`).
+  return app.request(`/v1/public/clubs/${init.slug ?? "club-a"}/team-life${path}`, { method: init.method ?? "GET", headers: { "content-type": "application/json", ...(init.token ? { "x-personal-link-token": init.token } : {}) }, body: init.body === undefined ? undefined : JSON.stringify(init.body) });
 }
 const json = async <T>(res: Response) => (await res.json()) as T;
 

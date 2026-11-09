@@ -37,7 +37,7 @@ function token(licencieId: string, value: string) {
   state.publicTokens.push({ id: `t-${licencieId}`, club_id: CLUB_A.id, licencie_id: licencieId, token_hash: hashPublicToken(value), email: null, created_at: "2026-09-30T10:00:00Z", revoked_at: null, revoked_by: null });
 }
 
-const home = (t: string | null, slug = CLUB_A.slug) => app.request(`/v1/public/clubs/${slug}/home${t ? `?token=${t}` : ""}`);
+const home = (t: string | null, slug = CLUB_A.slug) => app.request(`/v1/public/clubs/${slug}/home`, { headers: t ? { "x-personal-link-token": t } : {} });
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });

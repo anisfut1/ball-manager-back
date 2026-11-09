@@ -30,7 +30,7 @@ const match = (id: string, at: string): FakeMatchRow => ({ id, club_id: CLUB.id,
 const club = (path: string, init: { method?: string; body?: unknown } = {}) =>
   app.request(`/v1/clubs/${CLUB.id}/team-life${path}`, { method: init.method ?? "GET", headers: { authorization: "Bearer t", "content-type": "application/json" }, body: init.body === undefined ? undefined : JSON.stringify(init.body) });
 const pub = (path: string, init: { method?: string; body?: unknown; token?: string } = {}) =>
-  app.request(`/v1/public/clubs/club-a/team-life${path}${init.token ? `?token=${init.token}` : ""}`, { method: init.method ?? "GET", headers: { "content-type": "application/json" }, body: init.body === undefined ? undefined : JSON.stringify(init.body) });
+  app.request(`/v1/public/clubs/club-a/team-life${path}`, { method: init.method ?? "GET", headers: { "content-type": "application/json", ...(init.token ? { "x-personal-link-token": init.token } : {}) }, body: init.body === undefined ? undefined : JSON.stringify(init.body) });
 const json = async <T>(r: Response) => (await r.json()) as T;
 
 interface Suggestions {
