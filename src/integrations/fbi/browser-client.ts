@@ -24,6 +24,18 @@ const FBI_NODE_REQUEST_TIMEOUT_MS = 20_000;
 /** Délai max de lecture du corps d'une réponse capturée pour le diagnostic (la page peut naviguer avant la fin). */
 const CAPTURE_BODY_TIMEOUT_MS = 1_500;
 const SKIPPED_RESOURCE_TYPES = new Set(["image", "font", "media"]);
+/** Refus temporaire de FBI à la connexion, levé par un second envoi (2026-11-16). */
+export const TOO_MANY_ATTEMPTS = /trop\s+de\s+tentatives?/i;
+/** Message d'erreur de la page de connexion FBI, recopié dans l'erreur (jamais les champs saisis). */
+const LOGIN_MESSAGE = /[^.\n]*(tentative|incorrect|invalide|bloqu|verrouill|expir)[^.\n]*/i;
+
+/** Texte visible de la page (les valeurs des champs n'en font pas partie). */
+async function loginPageText(page: Page): Promise<string> {
+  return page
+    .locator("body")
+    .innerText({ timeout: 3000 })
+    .catch(() => "");
+}
 /**
  * Session « légère » (récupération e-Marque, 2026-10-07) : une fois la page
  * d'accueil atteinte, ses scripts, styles et XHR ne sont plus chargés. Trace
@@ -507,39 +519,56 @@ export class BrowserFbiClient {
     }
 
     try {
-      if (this.humanPacing) {
-        await this.humanPause(page, 1500, 3000);
-        await selectors.usernameInput(page).click();
-        await selectors.usernameInput(page).pressSequentially(credentials.username, { delay: 60 + Math.random() * 60 });
-        await this.humanPause(page, 300, 800);
-        await selectors.passwordInput(page).click();
-        await selectors.passwordInput(page).pressSequentially(credentials.password, { delay: 60 + Math.random() * 60 });
-        await this.humanPause(page, 500, 1200);
-      } else {
-        await selectors.usernameInput(page).fill(credentials.username);
-        await selectors.passwordInput(page).fill(credentials.password);
+      await this.submitLoginForm(page, credentials);
+      // « Trop de tentatives » au premier envoi alors que le second passe
+      // (constaté à la main le 2026-11-16 ; le worker échouait toutes les
+      // 12 min) : UN second envoi, seulement sur ce message — jamais sur un
+      // simple refus, pour ne pas rapprocher le compte d'un verrouillage.
+      if ((await selectors.looksLikeLoginPage(page)) && TOO_MANY_ATTEMPTS.test(await loginPageText(page))) {
+        await page.waitForTimeout(3000);
+        await this.submitLoginForm(page, credentials);
       }
-
-      const submit = selectors.submitControl(page);
-      if ((await submit.count()) > 0) {
-        await submit.first().click();
-      } else {
-        await selectors.submitButtonByText(page).click();
-      }
-
-      await this.settle(page);
     } catch (error) {
       await context.close();
       throw new FbiError("Échec de la soumission du formulaire de connexion FBI", "NAVIGATION_FAILED", error);
     }
 
     if (await selectors.looksLikeLoginPage(page)) {
+      // Message affiché par FBI (jamais d'identifiant) : distingue un mauvais mot de passe d'un blocage.
+      const shown = (await loginPageText(page)).match(LOGIN_MESSAGE)?.[0];
       await context.close();
-      throw new FbiError("Connexion FBI refusée (identifiants incorrects, ou formulaire modifié)", "LOGIN_FAILED");
+      throw new FbiError(`Connexion FBI refusée (identifiants incorrects, ou formulaire modifié)${shown ? ` — FBI : « ${shown.trim().slice(0, 160)} »` : ""}`, "LOGIN_FAILED");
     }
 
     await this.humanPause(page, 2500, 4500);
     return { context, page };
+  }
+
+  /** Saisit identifiant et mot de passe (champs vidés d'abord : après un refus, FBI peut les garder) puis envoie. */
+  private async submitLoginForm(page: Page, credentials: { username: string; password: string }): Promise<void> {
+    if (this.humanPacing) {
+      await this.humanPause(page, 1500, 3000);
+      await selectors.usernameInput(page).fill("");
+      await selectors.usernameInput(page).click();
+      await selectors.usernameInput(page).pressSequentially(credentials.username, { delay: 60 + Math.random() * 60 });
+      await this.humanPause(page, 300, 800);
+      await selectors.passwordInput(page).fill("");
+      await selectors.passwordInput(page).click();
+      await selectors.passwordInput(page).pressSequentially(credentials.password, { delay: 60 + Math.random() * 60 });
+      await this.humanPause(page, 500, 1200);
+    } else {
+      await selectors.usernameInput(page).fill(credentials.username);
+      await selectors.passwordInput(page).fill(credentials.password);
+    }
+
+    const submit = selectors.submitControl(page);
+    if ((await submit.count()) > 0) {
+      await submit.first().click();
+    } else {
+      await selectors.submitButtonByText(page).click();
+    }
+
+    await this.settle(page);
   }
 
   async isSessionValid(session: BrowserFbiSession): Promise<boolean> {
