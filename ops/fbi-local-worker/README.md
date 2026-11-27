@@ -30,6 +30,34 @@ ne pas la mettre. Le worker demande alors le mot de passe FBI au démarrage
 est lu en base. `SUPABASE_SERVICE_ROLE_KEY` : Supabase → Project Settings → API
 Keys → `service_role` → Reveal.
 
+## Service automatique (macOS)
+
+Pour que le worker tourne sans terminal ouvert : il démarre à l'ouverture de
+session, redémarre seul après une erreur (au plus une fois toutes les 5 min)
+et empêche la veille du Mac tant qu'il tourne.
+
+```bash
+cd ~/fbi-test && git pull && npm ci
+bash ops/fbi-local-worker/service/install.sh
+```
+
+- Sans `FBI_CREDENTIALS_ENCRYPTION_KEY` dans `.env.fbi-local`, le script
+  demande une fois le mot de passe FBI et le range dans le trousseau macOS
+  (entrée `ball-manager-fbi`). Le worker l'y relit au démarrage ; il n'est
+  jamais écrit en clair ni journalisé.
+- Journal du service : `~/Library/Logs/ball-manager-fbi-worker.log` (sans
+  identifiant ni mot de passe), en plus des `fbi-local-worker-*.jsonl`.
+- État : `launchctl print gui/$(id -u)/fr.ballmanager.fbi-local-worker`.
+  Redémarrer après un `git pull` : relancer `install.sh`.
+- Arrêt (`uninstall.sh`, extinction, déconnexion de session) : baux libérés,
+  Vercel reprend la main aussitôt.
+- Limite : Mac sur batterie capot fermé, il dort quand même ; le bail expire
+  en 5 min et Vercel reprend.
+- Retirer : `bash ops/fbi-local-worker/service/uninstall.sh`.
+
+Ne pas lancer `npm run fbi:local-worker` à la main pendant que le service
+tourne : deux workers se disputeraient la même session FBI.
+
 ## Synchro FFBB depuis ce poste
 
 Depuis le 13/10/2026, l'API FFBB (api.ffbb.app) refuse l'adresse de Vercel
