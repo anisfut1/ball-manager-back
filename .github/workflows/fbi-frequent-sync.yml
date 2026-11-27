@@ -40,6 +40,10 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      # Domaine Vercel de l'API : il dérive du nom du projet Vercel, resté
+      # `club-manager-api` après le renommage du dépôt (docs/REPOSITORY_MIGRATION.md).
+      API_BASE_URL: https://club-manager-api-two.vercel.app
     steps:
       # Synchro FFBB (scores, matchs passés en « joué », calendrier) — retour
       # du club, 2026-10-02 : elle n'était appelée QUE par le cron Vercel
@@ -52,7 +56,7 @@ jobs:
         continue-on-error: true
         run: |
           curl --fail --silent --show-error --max-time 240 \
-            -X GET "https://club-manager-api-two.vercel.app/internal/cron/ffbb" \
+            -X GET "${API_BASE_URL}/internal/cron/ffbb" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       # Notifications push iOS : rattrapage des envois en échec passager
@@ -62,7 +66,7 @@ jobs:
         continue-on-error: true
         run: |
           curl --fail --silent --show-error --max-time 60 \
-            -X GET "https://club-manager-api-two.vercel.app/internal/cron/push" \
+            -X GET "${API_BASE_URL}/internal/cron/push" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       # Diagnostic (2026-10-06) : FBI répond-il depuis une autre adresse que
@@ -86,7 +90,7 @@ jobs:
         continue-on-error: true
         run: |
           r=$(curl --silent --show-error --max-time 60 \
-            -X GET "https://club-manager-api-two.vercel.app/internal/cron/fbi-reachability" \
+            -X GET "${API_BASE_URL}/internal/cron/fbi-reachability" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" 2>&1) || true
           echo "::notice title=FBI depuis l'API::$r"
 
@@ -96,7 +100,7 @@ jobs:
       - name: Empiler les jobs FBI récurrents
         run: |
           curl --fail --silent --show-error --max-time 60 \
-            -X GET "https://club-manager-api-two.vercel.app/internal/cron/fbi-enqueue" \
+            -X GET "${API_BASE_URL}/internal/cron/fbi-enqueue" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       # Traite les jobs de la file (dérogation, calendrier ou téléchargement
@@ -118,12 +122,12 @@ jobs:
               sleep 30
             fi
             out=$(curl --fail --silent --show-error --max-time 300 \
-              -X GET "https://club-manager-api-two.vercel.app/internal/cron/fbi-jobs" \
+              -X GET "${API_BASE_URL}/internal/cron/fbi-jobs" \
               -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}") || { echo "fbi-jobs en échec (repris au prochain passage)"; break; }
             echo "fbi-jobs #$i : $out"
             echo "::notice title=fbi-jobs $i::$out"
             curl --fail --silent --show-error --max-time 280 \
-              -X GET "https://club-manager-api-two.vercel.app/internal/cron/emarque-parse" \
+              -X GET "${API_BASE_URL}/internal/cron/emarque-parse" \
               -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" || echo "emarque-parse en échec (repris au prochain passage)"
             echo
             case "$out" in *'"claimed":0'*) break ;; esac

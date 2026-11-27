@@ -3,7 +3,7 @@
 Backend REST du SaaS multi-clubs (FFBB / FBI / e-Marque). TypeScript, [Hono](https://hono.dev/), déployé comme fonctions Vercel. Aucune infrastructure autre que **Vercel** et **Supabase** (PostgreSQL, Auth, Storage) — voir `docs/DEPLOYMENT.md`.
 
 Ce dépôt est le résultat d'une migration depuis le dépôt frontend historique
-[ball-manager-web](https://github.com/anisfut1/scsb) (commit `5deeaa4`) : voir
+[ball-manager-web](https://github.com/anisfut1/ball-manager-web) (ex-`SCSB`) (commit `5deeaa4`) : voir
 `docs/MIGRATION.md` pour le détail de ce qui a été repris tel quel, adapté,
 ou volontairement laissé de côté (le frontend Next.js reste dans ball-manager-web).
 
@@ -51,7 +51,13 @@ Voir `ARCHITECTURE.md` pour la vue d'ensemble, et `docs/` pour le détail par do
 
 ## Ce que ce dépôt N'EST PAS
 
-Backend uniquement — aucun React, page, composant UI. Le frontend (ball-manager-web)
-continue de fonctionner de façon autonome pendant la transition ; il
-n'appelle pas encore cette API (voir `docs/MIGRATION.md`, "Duplication
-temporaire").
+Backend uniquement — aucun React, page, composant UI. Ses clients sont
+[ball-manager-web](https://github.com/anisfut1/ball-manager-web) (Next.js, qui
+passe par cette API pour toute donnée métier et n'utilise Supabase que pour
+l'authentification) et [ball-manager-app](https://github.com/anisfut1/ball-manager-app)
+(Expo). L'historique de la migration est dans `docs/MIGRATION.md`.
+
+## Outils hors API (`ops/`)
+
+Scripts lancés à la main, hors Vercel : voir [`ops/README.md`](ops/README.md)
+pour savoir lequel sert en production et lesquels sont des diagnostics.
