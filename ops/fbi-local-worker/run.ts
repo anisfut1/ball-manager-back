@@ -29,6 +29,7 @@
  * Journal : `fbi-local-worker-<date>.jsonl` (jamais d'identifiant, de mot de
  * passe ni de valeur de cookie).
  */
+import { execFileSync, spawn } from "node:child_process";
 import { appendFileSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { hostname } from "node:os";
@@ -53,6 +54,12 @@ process.env.FRONTEND_ORIGINS ||= "http://localhost";
 // envoyées par Vercel (cron /internal/cron/push), seul à avoir les clés APNs.
 process.env.PUSH_QUEUE_ONLY = "1";
 
+// Service macOS (service/install.sh) : pas de veille tant que ce processus vit.
+// `caffeinate -w` s'arrête de lui-même quand le worker s'arrête.
+if (process.platform === "darwin" && process.env.FBI_LOCAL_CAFFEINATE === "1") {
+  spawn("/usr/bin/caffeinate", ["-is", "-w", String(process.pid)], { stdio: "ignore", detached: true }).unref();
+}
+
 // Cadence (2026-10-07, après les premières passes : ~3 s de travail réel par
 // feuille, la pause de 20 s dominait) — même session, aucune connexion en plus.
 // Passes espacées de 15 min (2026-10-22, au lieu de 5) : les écritures
@@ -73,6 +80,9 @@ const LEASE_RENEW_MS = 60_000;
 const FFBB_LEASE_MIN = 30;
 const WRITE_POLL_MS = Number(process.env.FBI_LOCAL_WRITE_POLL_MS || 4_000);
 const BASE_URL = process.env.FBI_BASE_URL || "https://extranet.ffbb.com/fbi";
+/** Entrée du trousseau macOS où lire le mot de passe FBI (voir `service/install.sh`). */
+const KEYCHAIN_SERVICE = process.env.FBI_LOCAL_KEYCHAIN_SERVICE || "ball-manager-fbi";
+const KEYCHAIN_ACCOUNT = "fbi";
 
 const { createServiceSupabaseClient } = await import("../../src/db/client.js");
 const { claimNextJobForClub } = await import("../../src/jobs/claim.js");
@@ -157,12 +167,41 @@ async function resolveClubId(): Promise<string> {
 
 const clubId = await resolveClubId();
 
+/**
+ * Mot de passe FBI rangé dans le trousseau macOS (service lancé au démarrage
+ * du Mac, 2026-11-27 : aucun terminal pour le saisir). Jamais écrit sur disque
+ * en clair ni journalisé. `null` s'il n'y est pas (ou hors macOS).
+ */
+function passwordFromKeychain(): string | null {
+  if (process.platform !== "darwin") return null;
+  try {
+    const value = execFileSync("/usr/bin/security", ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT, "-w"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return value.replace(/\n$/, "") || null;
+  } catch {
+    return null;
+  }
+}
+
 let typedCredentials: { username: string; password: string } | null = null;
 if (ASK_PASSWORD) {
+  const interactive = Boolean(process.stdin.isTTY);
   const { data } = await supabase.from("fbi_credentials").select("username").eq("club_id", clubId).maybeSingle();
+  const stored = passwordFromKeychain();
+  if (!stored && !interactive) {
+    console.error(
+      `Mot de passe FBI introuvable : ni FBI_CREDENTIALS_ENCRYPTION_KEY dans ${ENV_FILE}, ni entrée « ${KEYCHAIN_SERVICE} » dans le trousseau, ` +
+        "et aucun terminal pour le saisir. Voir ops/fbi-local-worker/README.md, « Service automatique ».",
+    );
+    process.exit(1);
+  }
   const username = data?.username || (await ask("Identifiant FBI : ", false));
-  console.log(`Identifiant FBI : ${username}`);
-  const password = await ask("Mot de passe FBI (masqué, gardé en mémoire seulement) : ", true);
+  // Identifiant affiché seulement à l'écran d'un terminal, jamais dans un journal de service.
+  if (interactive) console.log(`Identifiant FBI : ${username}`);
+  const password = stored ?? (await ask("Mot de passe FBI (masqué, gardé en mémoire seulement) : ", true));
+  if (stored) record("credentials_source", { source: "keychain" }, "mot de passe FBI lu dans le trousseau macOS");
   typedCredentials = { username, password };
 }
 const browser = await launchServerlessBrowser();
@@ -408,7 +447,8 @@ async function runJob(job: Awaited<ReturnType<typeof claimNextJobForClub>> & obj
 }
 
 let stopping = false;
-process.on("SIGINT", () => {
+// SIGINT : Ctrl+C dans un terminal. SIGTERM : arrêt du service (launchctl, extinction du Mac).
+function stop(): void {
   if (stopping) process.exit(130);
   stopping = true;
   record("stopped", {}, "arrêt : baux FBI et FFBB libérés (Vercel reprend la main), navigateur fermé sans déconnexion FBI");
@@ -416,7 +456,9 @@ process.on("SIGINT", () => {
     .then(() => (FFBB_LOCAL ? setFfbbLease(null) : undefined))
     .then(() => browser.close())
     .finally(() => process.exit(0));
-});
+}
+process.on("SIGINT", stop);
+process.on("SIGTERM", stop);
 
 record("started", { workerId, clubId, intervalMin: INTERVAL_MIN, maxJobsPerPass: MAX_JOBS_PER_PASS, relogin: RELOGIN, ffbbLocal: FFBB_LOCAL }, `worker FBI${FFBB_LOCAL ? " + FFBB" : ""} local démarré, une passe toutes les ${INTERVAL_MIN} min — journal ${logFile} — Ctrl+C pour arrêter`);
 for (;;) {
