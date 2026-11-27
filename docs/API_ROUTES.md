@@ -1,9 +1,18 @@
 # Inventaire des routes de l'API
 
 > Fichier **généré** par `npm run docs:routes` (ops/docs/generate-routes-doc.ts) — ne pas modifier à la main.
-> 185 routes montées dans le code, 177 décrites dans le contrat OpenAPI (`/openapi.json`, `/docs`).
+> 210 routes montées dans le code, 202 décrites dans le contrat OpenAPI (`/openapi.json`, `/docs`).
 
 Accès : **Compte connecté** = JWT Supabase (`Authorization: Bearer`), droits vérifiés par club ; **Public** = sans compte ; **Public (lien perso si action)** = lecture libre, écriture avec le jeton du lien personnel ; **Secret cron** = `CRON_SECRET`.
+
+## Club — account-links
+
+| Méthode | Route | Accès | Description |
+|---|---|---|---|
+| GET | `/v1/clubs/:clubId/account-links` | Compte connecté | Comptes liés aux licenciés (file « Demandes de rattachement » avec status=pending) |
+| DELETE | `/v1/clubs/:clubId/account-links/:linkId` | Compte connecté | Lien retiré |
+| POST | `/v1/clubs/:clubId/account-links/:linkId/accept` | Compte connecté | Rattachement accepté |
+| POST | `/v1/clubs/:clubId/account-links/:linkId/refuse` | Compte connecté | Rattachement refusé |
 
 ## Club — capabilities
 
@@ -74,6 +83,7 @@ Accès : **Compte connecté** = JWT Supabase (`Authorization: Bearer`), droits v
 |---|---|---|---|
 | GET | `/v1/clubs/:clubId/issues` | Compte connecté | Anomalies e-Marque à vérifier |
 | POST | `/v1/clubs/:clubId/issues/:matchId/resolve` | Compte connecté | Anomalie résolue |
+| POST | `/v1/clubs/:clubId/issues/dismiss` | Compte connecté | Anomalie retirée de la liste |
 
 ## Club — licencies
 
@@ -176,12 +186,20 @@ Accès : **Compte connecté** = JWT Supabase (`Authorization: Bearer`), droits v
 |---|---|---|---|
 | GET | `/v1/clubs/:clubId/venues` | Compte connecté | Gymnases du club |
 | PATCH | `/v1/clubs/:clubId/venues/:venueId` | Compte connecté | Gymnase mis à jour |
+| GET | `/v1/clubs/:clubId/venues/closures` | Compte connecté | Indisponibilités des gymnases |
+| POST | `/v1/clubs/:clubId/venues/closures` | Compte connecté | Indisponibilité ajoutée |
+| DELETE | `/v1/clubs/:clubId/venues/closures/:closureId` | Compte connecté | Indisponibilité supprimée |
 
 ## Compte (sans session)
 
 | Méthode | Route | Accès | Description |
 |---|---|---|---|
 | POST | `/v1/account/password-reset` | Public | Demande prise en compte |
+| POST | `/v1/account/refresh` | Public | Session renouvelée |
+| POST | `/v1/account/sign-in` | Public | Session ouverte |
+| POST | `/v1/account/sign-up` | Public | Demande prise en compte (même réponse que l'adresse ait un compte ou non) |
+| POST | `/v1/account/sign-up/resend` | Public | Demande prise en compte (même réponse que l'adresse ait un compte ou non) |
+| POST | `/v1/account/sign-up/verify` | Public | Adresse vérifiée, session ouverte |
 
 ## Général — clubs
 
@@ -237,10 +255,27 @@ Accès : **Compte connecté** = JWT Supabase (`Authorization: Bearer`), droits v
 |---|---|---|---|
 | POST | `/v1/public/clubs/:clubSlug/access-requests` | Public (lien perso si action) | Demande transmise au club |
 
+## Public — account
+
+| Méthode | Route | Accès | Description |
+|---|---|---|---|
+| DELETE | `/v1/public/clubs/:clubSlug/account` | Compte connecté | Compte supprimé |
+| GET | `/v1/public/clubs/:clubSlug/account` | Compte connecté | Compte et licenciés suivis dans ce club |
+| POST | `/v1/public/clubs/:clubSlug/account/invites` | Compte connecté | Lien d'invitation à partager (7 jours, usage unique) |
+| POST | `/v1/public/clubs/:clubSlug/account/invites/accept` | Compte connecté | Invitation acceptée |
+| POST | `/v1/public/clubs/:clubSlug/account/links` | Compte connecté | Rattachement actif ou en attente d'un admin |
+| DELETE | `/v1/public/clubs/:clubSlug/account/links/:licencieId` | Compte connecté | Licencié retiré du compte |
+| POST | `/v1/public/clubs/:clubSlug/account/links/device-session` | Compte connecté | Personnes de la session d'appareil reprises sur le compte |
+| POST | `/v1/public/clubs/:clubSlug/account/push-test` | Compte connecté | Résultat du test |
+| PUT | `/v1/public/clubs/:clubSlug/account/push-token` | Compte connecté | Jeton enregistré |
+| POST | `/v1/public/clubs/:clubSlug/account/push-token/remove` | Compte connecté | Jeton retiré |
+
 ## Public — auth
 
 | Méthode | Route | Accès | Description |
 |---|---|---|---|
+| POST | `/v1/public/clubs/:clubSlug/auth/admin-session` | Compte connecté | Session d'administration (compte club_admin du site), pour les routes /v1/clubs/{clubId}/… |
+| POST | `/v1/public/clubs/:clubSlug/auth/admin-session/refresh` | Compte connecté | Session d'administration rafraîchie (rôle revérifié) |
 | POST | `/v1/public/clubs/:clubSlug/auth/codes` | Public (lien perso si action) | Code d'autorisation (5 min, usage unique, lié au PKCE) |
 | POST | `/v1/public/clubs/:clubSlug/auth/device-sessions` | Public (lien perso si action) | Session d'appareil (secret affiché une seule fois) |
 | DELETE | `/v1/public/clubs/:clubSlug/auth/me` | Compte connecté | Accès supprimé pour toutes les personnes de la session (fiches sportives conservées) |

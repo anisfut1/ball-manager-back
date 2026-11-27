@@ -167,3 +167,31 @@ export function buildFbiDerogationDigestEmail(input: { club: ClubBranding; incom
   });
   return { subject, html, text };
 }
+
+/** Code de vérification à 6 chiffres (création de compte, web et app iOS). */
+export function buildSignupCodeEmail(input: { code: string; link: string }) {
+  const subject = `${input.code} est ton code ${PLATFORM_NAME}`;
+  const { html, text } = renderEmail({
+    preheader: "Ton code pour terminer la création de ton compte.",
+    eyebrow: PLATFORM_NAME,
+    title: "Ton code de vérification",
+    paragraphs: ["Saisis ce code pour terminer la création de ton compte :", input.code],
+    button: { label: "Ouvrir Ball Manager", href: input.link },
+    footer: ["Le code expire dans 30 minutes.", "Si tu n'as pas demandé de compte, ignore cet email."],
+  });
+  return { subject, html, text };
+}
+
+/** Création de compte avec une adresse déjà inscrite : on le dit à la personne, jamais à celui qui a tapé l'adresse. */
+export function buildAlreadyRegisteredEmail(input: { link: string }) {
+  const subject = `Tu as déjà un compte ${PLATFORM_NAME}`;
+  const { html, text } = renderEmail({
+    preheader: "Connecte-toi avec ton mot de passe, ou choisis-en un nouveau.",
+    eyebrow: PLATFORM_NAME,
+    title: "Tu as déjà un compte",
+    paragraphs: ["Quelqu'un (sans doute toi) a voulu créer un compte avec cette adresse, mais elle en a déjà un. Connecte-toi avec ton mot de passe habituel.", "Mot de passe oublié ? Choisis « Mot de passe oublié » sur l'écran de connexion."],
+    button: { label: "Ouvrir Ball Manager", href: input.link },
+    footer: ["Si ce n'est pas toi, ignore cet email : rien n'a changé sur ton compte."],
+  });
+  return { subject, html, text };
+}

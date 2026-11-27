@@ -782,6 +782,85 @@ export interface Database {
         }
       >;
 
+      account_licencie_links: Table<
+        {
+          id: string;
+          club_id: string;
+          user_id: string;
+          licencie_id: string;
+          status: "active" | "pending" | "refused";
+          source: "email_match" | "personal_link" | "device_session" | "invite" | "admin" | "request";
+          created_at: string;
+          decided_at: string | null;
+          decided_by: string | null;
+        },
+        {
+          id?: string;
+          club_id: string;
+          user_id: string;
+          licencie_id: string;
+          status: "active" | "pending" | "refused";
+          source: "email_match" | "personal_link" | "device_session" | "invite" | "admin" | "request";
+          created_at?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+        }
+      >;
+
+      account_invites: Table<
+        {
+          id: string;
+          club_id: string;
+          licencie_id: string;
+          invited_by: string | null;
+          code_hash: string;
+          created_at: string;
+          expires_at: string;
+          accepted_at: string | null;
+          accepted_by: string | null;
+        },
+        {
+          id?: string;
+          club_id: string;
+          licencie_id: string;
+          invited_by?: string | null;
+          code_hash: string;
+          created_at?: string;
+          expires_at: string;
+          accepted_at?: string | null;
+          accepted_by?: string | null;
+        }
+      >;
+
+      account_push_tokens: Table<
+        {
+          id: string;
+          user_id: string;
+          club_id: string;
+          token: string;
+          platform: "ios";
+          environment: "development" | "production";
+          app_version: string | null;
+          created_at: string;
+          last_seen_at: string;
+          revoked_at: string | null;
+          revoked_reason: string | null;
+        },
+        {
+          id?: string;
+          user_id: string;
+          club_id: string;
+          token: string;
+          platform?: "ios";
+          environment: "development" | "production";
+          app_version?: string | null;
+          created_at?: string;
+          last_seen_at?: string;
+          revoked_at?: string | null;
+          revoked_reason?: string | null;
+        }
+      >;
+
       issue_dismissals: Table<
         {
           club_id: string;

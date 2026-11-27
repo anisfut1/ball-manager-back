@@ -313,6 +313,13 @@ export interface FakeClubSupabaseState {
   deviceSessionGrants: FakeRow[];
   authCodes: FakeRow[];
   devicePushTokens: FakeRow[];
+  /** Comptes de l'espace licencié (docs/ACCOUNTS.md). */
+  accountLinks: FakeRow[];
+  accountInvites: FakeRow[];
+  accountPushTokens: FakeRow[];
+  /** `auth.admin` simulé : utilisateurs Auth (id → email) et suppressions reçues. */
+  authUsers: { id: string; email: string }[];
+  deletedAuthUsers: string[];
   notificationOutbox: FakeRow[];
   issueDismissals: FakeRow[];
   venueClosures: FakeRow[];
@@ -373,6 +380,11 @@ export function makeFakeClubSupabaseState(overrides: Partial<FakeClubSupabaseSta
     deviceSessionGrants: [],
     authCodes: [],
     devicePushTokens: [],
+    accountLinks: [],
+    accountInvites: [],
+    accountPushTokens: [],
+    authUsers: [],
+    deletedAuthUsers: [],
     notificationOutbox: [],
     issueDismissals: [],
     venueClosures: [],
@@ -451,6 +463,8 @@ function mutableTable(getRows: () => FakeRow[], setRows: (rows: FakeRow[]) => vo
         },
         select: () => ({
           maybeSingle: () => Promise.resolve({ data: apply()[0] ?? null, error: null }),
+          // `.update(…).eq(…).select("id")` : lignes modifiées (mise à jour conditionnelle, ex. invitation à usage unique).
+          then: (onFulfilled: (value: { data: FakeRow[]; error: null }) => unknown) => Promise.resolve({ data: apply(), error: null }).then(onFulfilled),
           single: () => {
             const rows = apply();
             return Promise.resolve(rows[0] ? { data: rows[0], error: null } : { data: null, error: { message: "not found" } });
@@ -1076,6 +1090,22 @@ export function buildFakeClubSupabase(state: FakeClubSupabaseState): any {
   };
 
   return {
+    auth: {
+      admin: {
+        getUserById: (id: string) => {
+          const user = state.authUsers.find((u) => u.id === id);
+          return Promise.resolve(user ? { data: { user: { id: user.id, email: user.email } }, error: null } : { data: { user: null }, error: { message: "User not found" } });
+        },
+        deleteUser: (id: string) => {
+          state.deletedAuthUsers.push(id);
+          state.authUsers = state.authUsers.filter((u) => u.id !== id);
+          // ON DELETE CASCADE des tables de comptes.
+          state.accountLinks = state.accountLinks.filter((l) => l.user_id !== id);
+          state.accountPushTokens = state.accountPushTokens.filter((t) => t.user_id !== id);
+          return Promise.resolve({ data: {}, error: null });
+        },
+      },
+    },
     storage: {
       from: (bucket: string) => ({
         remove(paths: string[]) {
@@ -1172,6 +1202,15 @@ export function buildFakeClubSupabase(state: FakeClubSupabaseState): any {
           return mutableTable(() => state.authCodes, (rows) => (state.authCodes = rows), { defaults: () => ({ used_at: null, code_challenge: null, redirect_path: null }) });
         case "device_push_tokens":
           return mutableTable(() => state.devicePushTokens, (rows) => (state.devicePushTokens = rows), { defaults: () => ({ revoked_at: null, revoked_reason: null, platform: "ios" }) });
+        case "account_licencie_links":
+          return mutableTable(() => state.accountLinks, (rows) => (state.accountLinks = rows), {
+            defaults: () => ({ decided_at: null, decided_by: null }),
+            unique: (row, rows) => rows.some((r) => r.user_id === row.user_id && r.licencie_id === row.licencie_id),
+          });
+        case "account_invites":
+          return mutableTable(() => state.accountInvites, (rows) => (state.accountInvites = rows), { defaults: () => ({ accepted_at: null, accepted_by: null }) });
+        case "account_push_tokens":
+          return mutableTable(() => state.accountPushTokens, (rows) => (state.accountPushTokens = rows), { defaults: () => ({ revoked_at: null, revoked_reason: null, platform: "ios" }) });
         case "notification_outbox":
           return mutableTable(() => state.notificationOutbox, (rows) => (state.notificationOutbox = rows), {
             defaults: () => ({ status: "pending", attempts: 0, last_error: null, devices_sent: 0, created_at: new Date().toISOString(), next_attempt_at: new Date().toISOString(), sent_at: null }),

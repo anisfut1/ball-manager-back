@@ -72,6 +72,43 @@ export async function removePushToken(db: DbClient, sessionId: string, reason = 
   await db.from("device_push_tokens").update({ revoked_at: now.toISOString(), revoked_reason: reason }).eq("session_id", sessionId).is("revoked_at", null);
 }
 
+/** Jeton refusé définitivement par APNs (app supprimée…) : retiré des sessions comme des comptes. */
+async function revokeTokenEverywhere(db: DbClient, token: string, reason: string, now: Date): Promise<void> {
+  const update = { revoked_at: now.toISOString(), revoked_reason: reason.slice(0, 64) };
+  await db.from("device_push_tokens").update(update).eq("token", token).is("revoked_at", null);
+  await db.from("account_push_tokens").update(update).eq("token", token).is("revoked_at", null);
+}
+
+// ─── Jetons de compte ───────────────────────────────────────────────────────
+
+export async function registerAccountPushToken(
+  db: DbClient,
+  account: { userId: string; clubId: string },
+  input: { token: string; environment: PushEnvironment; appVersion?: string | null },
+  now: Date = new Date(),
+): Promise<void> {
+  const at = now.toISOString();
+  await db.from("account_push_tokens").upsert(
+    {
+      user_id: account.userId,
+      club_id: account.clubId,
+      token: input.token.toLowerCase(),
+      platform: "ios",
+      environment: input.environment,
+      app_version: input.appVersion?.slice(0, 32) ?? null,
+      last_seen_at: at,
+      revoked_at: null,
+      revoked_reason: null,
+    },
+    { onConflict: "user_id,club_id,token" },
+  );
+}
+
+/** Déconnexion d'un iPhone : son jeton seulement (les autres appareils du compte continuent de recevoir). */
+export async function removeAccountPushToken(db: DbClient, account: { userId: string; clubId: string }, token: string, now: Date = new Date()): Promise<void> {
+  await db.from("account_push_tokens").update({ revoked_at: now.toISOString(), revoked_reason: "user" }).eq("user_id", account.userId).eq("club_id", account.clubId).eq("token", token.toLowerCase()).is("revoked_at", null);
+}
+
 export interface PushTarget {
   token: string;
   environment: PushEnvironment;
@@ -80,6 +117,23 @@ export interface PushTarget {
 /** Appareils joignables pour ces licenciés de CE club (un appareil = une fois, même avec deux enfants). */
 export async function pushTargets(db: DbClient, clubId: string, licencieIds: readonly string[], now: Date = new Date()): Promise<PushTarget[]> {
   if (licencieIds.length === 0) return [];
+  const byToken = new Map<string, PushTarget>();
+  for (const t of await sessionPushTargets(db, clubId, licencieIds, now)) byToken.set(t.token, t);
+  for (const t of await accountPushTargets(db, clubId, licencieIds)) byToken.set(t.token, t);
+  return [...byToken.values()];
+}
+
+/** Comptes (docs/ACCOUNTS.md) : tous les comptes qui suivent ces licenciés (lien actif) et leurs iPhone. */
+async function accountPushTargets(db: DbClient, clubId: string, licencieIds: readonly string[]): Promise<PushTarget[]> {
+  const { data: links } = await db.from("account_licencie_links").select("user_id").eq("club_id", clubId).eq("status", "active").in("licencie_id", [...licencieIds]);
+  const userIds = [...new Set(((links ?? []) as { user_id: string }[]).map((l) => l.user_id))];
+  if (userIds.length === 0) return [];
+  const { data: tokenRows } = await db.from("account_push_tokens").select("token, environment").eq("club_id", clubId).in("user_id", userIds).is("revoked_at", null);
+  return ((tokenRows ?? []) as { token: string; environment: PushEnvironment }[]).map((t) => ({ token: t.token, environment: t.environment }));
+}
+
+/** Sessions d'appareil (avant les comptes) : droit adossé à un lien personnel encore valide. */
+async function sessionPushTargets(db: DbClient, clubId: string, licencieIds: readonly string[], now: Date): Promise<PushTarget[]> {
   const { data: grantRows } = await db.from("device_session_grants").select("session_id, token_id").eq("club_id", clubId).in("licencie_id", [...licencieIds]);
   const grants = (grantRows ?? []) as { session_id: string; token_id: string }[];
   if (grants.length === 0) return [];
@@ -111,12 +165,21 @@ export type PushTestStatus = "sent" | "not_configured" | "no_token" | "failed";
  */
 export async function sendTestPush(db: DbClient, session: { id: string; clubId: string }, now: Date = new Date()): Promise<{ status: PushTestStatus; reason: string | null }> {
   const { data: row } = await db.from("device_push_tokens").select("token, environment").eq("session_id", session.id).is("revoked_at", null).maybeSingle();
-  const target = row as { token: string; environment: PushEnvironment } | null;
+  return sendTestPushTo(db, session.clubId, row as PushTarget | null, now);
+}
+
+/** Même test pour un compte : uniquement vers le jeton de CET iPhone, s'il appartient bien au compte. */
+export async function sendAccountTestPush(db: DbClient, account: { userId: string; clubId: string }, token: string, now: Date = new Date()): Promise<{ status: PushTestStatus; reason: string | null }> {
+  const { data: row } = await db.from("account_push_tokens").select("token, environment").eq("user_id", account.userId).eq("club_id", account.clubId).eq("token", token.toLowerCase()).is("revoked_at", null).maybeSingle();
+  return sendTestPushTo(db, account.clubId, row as PushTarget | null, now);
+}
+
+async function sendTestPushTo(db: DbClient, clubId: string, target: PushTarget | null, now: Date): Promise<{ status: PushTestStatus; reason: string | null }> {
   const sender = senderFactory();
   if (!sender) return { status: "not_configured", reason: null };
   try {
     if (!target) return { status: "no_token", reason: null };
-    const { data: club } = await db.from("clubs").select("slug").eq("id", session.clubId).maybeSingle();
+    const { data: club } = await db.from("clubs").select("slug").eq("id", clubId).maybeSingle();
     const slug = (club as { slug: string } | null)?.slug ?? "";
     const result = await sender.send(target.token, target.environment, {
       title: "Ball Manager",
@@ -125,7 +188,7 @@ export async function sendTestPush(db: DbClient, session: { id: string; clubId: 
       threadId: "TEST",
     });
     if (result.ok) return { status: "sent", reason: null };
-    if (result.permanent) await db.from("device_push_tokens").update({ revoked_at: now.toISOString(), revoked_reason: result.reason.slice(0, 64) }).eq("token", target.token).is("revoked_at", null);
+    if (result.permanent) await revokeTokenEverywhere(db, target.token, result.reason, now);
     return { status: "failed", reason: result.reason.slice(0, 200) };
   } finally {
     sender.close();
@@ -232,7 +295,7 @@ async function deliver(db: DbClient, sender: PushSender, row: OutboxRow, now: Da
   for (const target of targets) {
     const result = await sender.send(target.token, target.environment, { title: row.title, body: row.body, path: row.path, threadId: row.kind, collapseId: row.dedupe_key });
     if (result.ok) delivered += 1;
-    else if (result.permanent) await db.from("device_push_tokens").update({ revoked_at: now.toISOString(), revoked_reason: result.reason.slice(0, 64) }).eq("token", target.token).is("revoked_at", null);
+    else if (result.permanent) await revokeTokenEverywhere(db, target.token, result.reason, now);
     else transient = result.reason.slice(0, 200);
   }
   const attempts = row.attempts + 1;

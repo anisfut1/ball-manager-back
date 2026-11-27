@@ -38,6 +38,8 @@ export function links(base: string) {
     derogations: (slug: string) => `${club(slug)}/derogations`,
     derogation: (slug: string, requestId: string) => `${club(slug)}/derogations/${enc(requestId)}`,
     tables: (slug: string) => `${club(slug)}/tables`,
+    /** Invitation d'un proche (compte) : le code voyage dans le fragment, jamais envoyé au serveur web. */
+    accountInvite: (slug: string, code: string) => `${club(slug)}/invitation#${enc(code)}`,
     /** Lien de connexion à usage unique (AUTH_LINK_CODES=1) : la page GET n'utilise jamais le code. */
     loginCode: (slug: string, code: string) => `${club(slug)}/connexion/code/${enc(code)}`,
     /** Lien personnel historique (`?token=`), conservé pour la compatibilité des liens déjà envoyés. */

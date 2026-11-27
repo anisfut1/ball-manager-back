@@ -4,6 +4,8 @@ import { unauthorized } from "../api-error.js";
 export interface AuthUser {
   id: string;
   email: string | null;
+  /** Adresse vérifiée (code reçu par email) : seule une adresse vérifiée peut prouver un lien avec une fiche. */
+  emailConfirmed?: boolean;
 }
 
 const BEARER_PREFIX = "Bearer ";
@@ -31,5 +33,5 @@ export async function verifyAccessToken(token: string): Promise<AuthUser> {
     throw unauthorized("Jeton invalide ou expiré.");
   }
 
-  return { id: data.user.id, email: data.user.email ?? null };
+  return { id: data.user.id, email: data.user.email ?? null, emailConfirmed: Boolean(data.user.email_confirmed_at) };
 }
