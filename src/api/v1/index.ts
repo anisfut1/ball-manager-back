@@ -26,6 +26,7 @@ import { accountRouter } from "../../modules/account/routes.js";
 import { trainingsRouter } from "../../modules/trainings/routes.js";
 import { publicTrainingsRouter } from "../../modules/trainings/public-routes.js";
 import { deviceAuthRouter } from "../../modules/device-auth/routes.js";
+import { accountLinksAdminRouter, publicAccountRouter } from "../../modules/user-accounts/routes.js";
 import { createServiceSupabaseClient } from "../../db/client.js";
 import type { MeDto } from "../../contracts/me.js";
 
@@ -99,6 +100,8 @@ v1Router.route("/account", accountRouter);
 v1Router.route("/public/clubs/:clubSlug/team-life", publicTrainingsRouter);
 // App iOS : sessions d'appareil et codes d'autorisation (docs/MOBILE_AUTH.md).
 v1Router.route("/public/clubs/:clubSlug/auth", deviceAuthRouter);
+// Comptes de l'espace licencié (docs/ACCOUNTS.md).
+v1Router.route("/public/clubs/:clubSlug/account", publicAccountRouter);
 v1Router.route("/public/clubs/:clubSlug/home", publicHomeRouter);
 v1Router.route("/public/clubs/:clubSlug/players", publicPlayersRouter);
 v1Router.route("/public/clubs/:clubSlug", publicTablesRouter);
@@ -112,6 +115,7 @@ v1Router.route("/clubs/:clubId/licencies", licenciesRouter);
 v1Router.route("/clubs/:clubId/standings", standingsRouter);
 v1Router.route("/clubs/:clubId/derogation-requests", derogationRequestsRouter);
 v1Router.route("/clubs/:clubId/members", membersRouter);
+v1Router.route("/clubs/:clubId/account-links", accountLinksAdminRouter);
 v1Router.route("/clubs/:clubId/venues", clubVenuesRouter);
 v1Router.route("/clubs/:clubId/team-life", trainingsRouter);
 v1Router.route("/jobs", jobStatusRouter);

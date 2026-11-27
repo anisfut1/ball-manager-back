@@ -1,5 +1,7 @@
 # Auth
 
+> Comptes de l'espace licencié (email + mot de passe, web et app iOS) : voir [ACCOUNTS.md](ACCOUNTS.md).
+
 ## Flux
 
 ```

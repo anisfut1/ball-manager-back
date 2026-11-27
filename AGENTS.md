@@ -31,5 +31,5 @@ npm run lint && npm run typecheck && npm test
 ## Où lire
 
 `ARCHITECTURE.md` pour la vue d'ensemble, puis `docs/` par domaine
-(`API.md`, `AUTH.md`, `FBI.md`, `FFBB.md`, `JOBS.md`, `EMARQUE.md`,
+(`API.md`, `AUTH.md`, `ACCOUNTS.md`, `FBI.md`, `FFBB.md`, `JOBS.md`, `EMARQUE.md`,
 `DEPLOYMENT.md`).

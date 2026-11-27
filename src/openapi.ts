@@ -95,6 +95,25 @@ import { PublicHomeDtoSchema } from "./contracts/public-home.js";
 import { PublicPlayerProfileDtoSchema } from "./contracts/public-players.js";
 import { TableLeaderboardDtoSchema } from "./contracts/tables.js";
 import { PasswordResetDtoSchema } from "./modules/account/routes.js";
+import {
+  AcceptAccountInviteDtoSchema,
+  AccountDtoSchema,
+  AccountInviteDtoSchema,
+  AccountLinkResultDtoSchema,
+  AccountPushTokenDtoSchema,
+  AccountPushTokenRefDtoSchema,
+  AccountSessionDtoSchema,
+  AdminAccountLinkListDtoSchema,
+  CreateAccountInviteDtoSchema,
+  CreateAccountLinkDtoSchema,
+  ImportDeviceSessionDtoSchema,
+  LinkStatusSchema,
+  RefreshAccountDtoSchema,
+  ResendCodeDtoSchema,
+  SignInDtoSchema,
+  SignUpDtoSchema,
+  VerifySignUpDtoSchema,
+} from "./contracts/accounts.js";
 import { ClubMemberListDtoSchema, InviteMemberDtoSchema, SetMemberRolesDtoSchema } from "./contracts/members.js";
 import { ClubVenueAdminDtoSchema, ClubVenueListDtoSchema, CreateVenueClosureDtoSchema, UpdateClubVenueDtoSchema, VenueClosureDtoSchema, VenueClosureListDtoSchema } from "./contracts/club-venues.js";
 import { PoolStandingsListDtoSchema } from "./contracts/standings.js";
@@ -1389,6 +1408,37 @@ registry.registerPath({ method: "get", path: "/v1/public/clubs/{clubSlug}/team-l
 registry.registerPath({ method: "put", path: "/v1/public/clubs/{clubSlug}/team-life/trainings/{occurrenceId}/response", request: { params: pubOccurrenceParams, query: pubToken, body: jsonBody(PutTrainingResponseDtoSchema) }, responses: { 200: jsonResponse("Réponse enregistrée pour le licencié du lien", TrainingResponseResultDtoSchema), 403: jsonResponse("Pas dans cette équipe (NOT_IN_TEAM)", ErrorEnvelopeSchema), 409: jsonResponse("Séance annulée ou terminée", ErrorEnvelopeSchema), 401: jsonResponse("Lien invalide", ErrorEnvelopeSchema), 404: jsonResponse("Introuvable", ErrorEnvelopeSchema) } });
 registry.registerPath({ method: "post", path: "/v1/public/clubs/{clubSlug}/team-life/action-center", request: { params: clubSlugParam, body: jsonBody(ActionCenterRequestDtoSchema) }, responses: { 200: jsonResponse("Home « À faire » (liens de l'appareil fusionnés)", ActionCenterDtoSchema), 400: jsonResponse("Requête invalide", ErrorEnvelopeSchema), 404: jsonResponse("Introuvable", ErrorEnvelopeSchema) } });
 registry.registerPath({ method: "post", path: "/v1/public/clubs/{clubSlug}/team-life/planning", request: { params: clubSlugParam, query: z.object({ from: z.string().optional(), to: z.string().optional() }), body: jsonBody(ActionCenterRequestDtoSchema) }, responses: { 200: jsonResponse("Planning des équipes de l'appareil", PlanningDtoSchema), 400: jsonResponse("Requête invalide", ErrorEnvelopeSchema), 404: jsonResponse("Introuvable", ErrorEnvelopeSchema) } });
+
+// ─── Comptes de l'espace licencié (docs/ACCOUNTS.md) ────────────────────────
+{
+  const body = (schema: z.ZodTypeAny) => ({ body: { content: { "application/json": { schema } } } });
+  const sent = jsonResponse("Demande prise en compte (même réponse que l'adresse ait un compte ou non)", z.object({ sent: z.literal(true) }));
+  const tooMany = { 429: jsonResponse("Trop de demandes", ErrorEnvelopeSchema) };
+  registry.registerPath({ method: "post", path: "/v1/account/sign-up", request: body(SignUpDtoSchema), responses: { 202: sent, ...tooMany, ...validationResponses } });
+  registry.registerPath({ method: "post", path: "/v1/account/sign-up/resend", request: body(ResendCodeDtoSchema), responses: { 202: sent, ...tooMany, ...validationResponses } });
+  registry.registerPath({ method: "post", path: "/v1/account/sign-up/verify", request: body(VerifySignUpDtoSchema), responses: { 200: jsonResponse("Adresse vérifiée, session ouverte", AccountSessionDtoSchema), 401: jsonResponse("Mot de passe incorrect", ErrorEnvelopeSchema), ...tooMany, ...validationResponses } });
+  registry.registerPath({ method: "post", path: "/v1/account/sign-in", request: body(SignInDtoSchema), responses: { 200: jsonResponse("Session ouverte", AccountSessionDtoSchema), 401: jsonResponse("Email ou mot de passe incorrect", ErrorEnvelopeSchema), 403: jsonResponse("Adresse pas encore vérifiée (EMAIL_NOT_CONFIRMED)", ErrorEnvelopeSchema), ...tooMany, ...validationResponses } });
+  registry.registerPath({ method: "post", path: "/v1/account/refresh", request: body(RefreshAccountDtoSchema), responses: { 200: jsonResponse("Session renouvelée", AccountSessionDtoSchema), 401: jsonResponse("Session expirée", ErrorEnvelopeSchema), ...tooMany, ...validationResponses } });
+
+  const base = "/v1/public/clubs/{clubSlug}/account";
+  registry.registerPath({ method: "get", path: base, security: bearerAuth, request: { params: clubSlugParam }, responses: { 200: jsonResponse("Compte et licenciés suivis dans ce club", AccountDtoSchema), ...errorResponses } });
+  registry.registerPath({ method: "delete", path: base, security: bearerAuth, request: { params: clubSlugParam }, responses: { 204: { description: "Compte supprimé" }, ...errorResponses } });
+  registry.registerPath({ method: "post", path: `${base}/links`, security: bearerAuth, request: { params: clubSlugParam, ...body(CreateAccountLinkDtoSchema) }, responses: { 201: jsonResponse("Rattachement actif ou en attente d'un admin", AccountLinkResultDtoSchema), ...errorResponses, ...validationResponses } });
+  registry.registerPath({ method: "post", path: `${base}/links/device-session`, security: bearerAuth, request: { params: clubSlugParam, ...body(ImportDeviceSessionDtoSchema) }, responses: { 200: jsonResponse("Personnes de la session d'appareil reprises sur le compte", AccountDtoSchema), ...errorResponses, ...validationResponses } });
+  registry.registerPath({ method: "delete", path: `${base}/links/{licencieId}`, security: bearerAuth, request: { params: clubSlugAndLicencieIdParams }, responses: { 204: { description: "Licencié retiré du compte" }, ...errorResponses } });
+  registry.registerPath({ method: "post", path: `${base}/invites`, security: bearerAuth, request: { params: clubSlugParam, ...body(CreateAccountInviteDtoSchema) }, responses: { 201: jsonResponse("Lien d'invitation à partager (7 jours, usage unique)", AccountInviteDtoSchema), ...errorResponses, ...validationResponses } });
+  registry.registerPath({ method: "post", path: `${base}/invites/accept`, security: bearerAuth, request: { params: clubSlugParam, ...body(AcceptAccountInviteDtoSchema) }, responses: { 200: jsonResponse("Invitation acceptée", AccountDtoSchema), ...errorResponses, ...validationResponses } });
+  registry.registerPath({ method: "put", path: `${base}/push-token`, security: bearerAuth, request: { params: clubSlugParam, ...body(AccountPushTokenDtoSchema) }, responses: { 204: { description: "Jeton enregistré" }, ...errorResponses, ...validationResponses } });
+  registry.registerPath({ method: "post", path: `${base}/push-token/remove`, security: bearerAuth, request: { params: clubSlugParam, ...body(AccountPushTokenRefDtoSchema) }, responses: { 204: { description: "Jeton retiré" }, ...errorResponses, ...validationResponses } });
+  registry.registerPath({ method: "post", path: `${base}/push-test`, security: bearerAuth, request: { params: clubSlugParam, ...body(AccountPushTokenRefDtoSchema) }, responses: { 200: jsonResponse("Résultat du test", PushTestResultDtoSchema), ...errorResponses, ...validationResponses } });
+
+  const admin = "/v1/clubs/{clubId}/account-links";
+  const linkParams = clubIdParam.extend({ linkId: z.string().uuid() });
+  registry.registerPath({ method: "get", path: admin, security: bearerAuth, request: { params: clubIdParam, query: z.object({ status: LinkStatusSchema.optional(), licencieId: z.string().uuid().optional() }) }, responses: { 200: jsonResponse("Comptes liés aux licenciés (file « Demandes de rattachement » avec status=pending)", AdminAccountLinkListDtoSchema), ...errorResponses, ...validationResponses } });
+  registry.registerPath({ method: "post", path: `${admin}/{linkId}/accept`, security: bearerAuth, request: { params: linkParams }, responses: { 204: { description: "Rattachement accepté" }, ...errorResponses } });
+  registry.registerPath({ method: "post", path: `${admin}/{linkId}/refuse`, security: bearerAuth, request: { params: linkParams }, responses: { 204: { description: "Rattachement refusé" }, ...errorResponses } });
+  registry.registerPath({ method: "delete", path: `${admin}/{linkId}`, security: bearerAuth, request: { params: linkParams }, responses: { 204: { description: "Lien retiré" }, ...errorResponses } });
+}
 
 export function generateOpenApiDocument() {
   const generator = new OpenApiGeneratorV3(registry.definitions);
