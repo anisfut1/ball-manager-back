@@ -90,11 +90,20 @@ export async function provisionClubAccount(
 }
 
 /** Mot de passe oublié : n'envoie rien (et ne le dit pas) si l'adresse n'a pas de compte. */
-export async function sendPasswordReset(db: DbClient, email: string): Promise<void> {
+/** Page « Mon compte » de l'espace d'un club existant, sinon `null` (slug inconnu ou absent). */
+export async function clubAccountPath(db: DbClient, clubSlug: string | null | undefined): Promise<string | null> {
+  if (!clubSlug) return null;
+  const { data } = await db.from("clubs").select("slug").eq("slug", clubSlug).maybeSingle();
+  const slug = (data as { slug: string } | null)?.slug;
+  return slug ? `/public/${encodeURIComponent(slug)}/compte` : null;
+}
+
+export async function sendPasswordReset(db: DbClient, email: string, clubSlug?: string | null): Promise<void> {
   const user = await findUserByEmail(db, email);
   if (!user) return;
   const { data, error } = await db.auth.admin.generateLink({ type: "recovery", email: email.toLowerCase() });
   if (error || !data.properties?.hashed_token) throw new Error(`Création du lien de réinitialisation échouée : ${error?.message ?? "réponse incomplète"}`);
-  const message = buildPasswordResetEmail({ link: welcomeLink(data.properties.hashed_token, data.properties.verification_type ?? "recovery", "/") });
+  const next = (await clubAccountPath(db, clubSlug)) ?? "/";
+  const message = buildPasswordResetEmail({ link: welcomeLink(data.properties.hashed_token, data.properties.verification_type ?? "recovery", next) });
   await sendEmail({ to: email.toLowerCase(), fromName: PLATFORM_NAME, ...message });
 }

@@ -18,6 +18,11 @@ interface FakeUser {
 let users: FakeUser[];
 
 const db = {
+  // Seul `clubs` est lu (lien des emails vers l'espace du club).
+  from: () => {
+    const q = { slug: "" as string, select: () => q, eq: (_c: string, v: string) => ((q.slug = v), q), maybeSingle: async () => ({ data: q.slug === "club-a" ? { slug: "club-a" } : null, error: null }) };
+    return q;
+  },
   auth: {
     admin: {
       listUsers: async () => ({ data: { users }, error: null }),
@@ -79,6 +84,16 @@ describe("création de compte", () => {
     expect(users).toHaveLength(1);
     expect(users[0]!.password).toBe("ancien-mdp");
     expect(sent.at(-1)!.subject).toContain("déjà un compte");
+  });
+
+  it("le lien de l'email ramène à l'espace du club d'où vient la personne (club inconnu : accueil)", async () => {
+    await startSignUp(db, "a@example.test", "motdepasse1", new Date(), "club-a");
+    expect(sent.at(-1)!.text).toContain("/public/club-a/compte");
+    await startSignUp(db, "b@example.test", "motdepasse1", new Date(), "inconnu");
+    expect(sent.at(-1)!.text).not.toContain("/public/");
+    users.push({ id: "u9", email: "c@example.test", password: "x", email_confirmed_at: "2026-01-01T00:00:00Z", app_metadata: {} });
+    await startSignUp(db, "c@example.test", "motdepasse1", new Date(), "club-a");
+    expect(sent.at(-1)!.text).toContain("/public/club-a/compte");
   });
 
   it("mot de passe trop court : refusé avant tout", async () => {
