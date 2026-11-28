@@ -8,8 +8,10 @@ import { z } from "./zod.js";
 const Email = z.string().trim().email("Adresse email invalide.").max(254);
 const Password = z.string().min(8, "Le mot de passe doit faire au moins 8 caractères.").max(128);
 
-export const SignUpDtoSchema = z.object({ email: Email, password: Password }).strict().openapi("SignUpDto");
-export const ResendCodeDtoSchema = z.object({ email: Email }).strict().openapi("ResendCodeDto");
+/** Club d'où vient la personne : les liens des emails ramènent à son espace (`/public/{slug}/compte`), pas au login général. */
+export const ClubSlugRef = z.string().trim().regex(/^[a-z0-9-]{1,80}$/, "Club invalide.").optional();
+export const SignUpDtoSchema = z.object({ email: Email, password: Password, clubSlug: ClubSlugRef }).strict().openapi("SignUpDto");
+export const ResendCodeDtoSchema = z.object({ email: Email, clubSlug: ClubSlugRef }).strict().openapi("ResendCodeDto");
 export const VerifySignUpDtoSchema = z
   .object({ email: Email, code: z.string().trim().regex(/^\d{6}$/, "Le code fait 6 chiffres."), password: z.string().min(1).max(128) })
   .strict()

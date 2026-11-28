@@ -4,7 +4,7 @@ import { badRequest } from "../../api-error.js";
 import { createAnonSupabaseClient, createServiceSupabaseClient } from "../../db/client.js";
 import type { PasswordAuth } from "../device-auth/admin-session.js";
 import { parse } from "../trainings/routes.js";
-import { RefreshAccountDtoSchema, ResendCodeDtoSchema, SignInDtoSchema, SignUpDtoSchema, VerifySignUpDtoSchema } from "../../contracts/accounts.js";
+import { ClubSlugRef, RefreshAccountDtoSchema, ResendCodeDtoSchema, SignInDtoSchema, SignUpDtoSchema, VerifySignUpDtoSchema } from "../../contracts/accounts.js";
 import { refresh, resendSignUpCode, signIn, startSignUp, verifySignUp } from "../user-accounts/auth.js";
 import { sendPasswordReset } from "../../auth/account-invites.js";
 import { logError } from "../../logger.js";
@@ -18,7 +18,7 @@ import { claimResetSlot } from "./reset-cooldown.js";
  */
 export const accountRouter = new Hono();
 
-export const PasswordResetDtoSchema = z.object({ email: z.string().trim().email("Adresse email invalide.") }).strict().openapi("PasswordResetDto");
+export const PasswordResetDtoSchema = z.object({ email: z.string().trim().email("Adresse email invalide."), clubSlug: ClubSlugRef }).strict().openapi("PasswordResetDto");
 
 /** Cinq demandes par IP et par fenêtre de 15 minutes, quelles que soient les adresses visées (S-7). */
 const RESET_IP_LIMIT = 5;
@@ -38,7 +38,7 @@ accountRouter.post("/password-reset", async (c) => {
 
   if (claimResetSlot(email)) {
     try {
-      await sendPasswordReset(createServiceSupabaseClient(), email);
+      await sendPasswordReset(createServiceSupabaseClient(), email, body.data.clubSlug);
     } catch (error) {
       // Jamais l'adresse dans les journaux (dépôt public, voir docs/SECURITY.md).
       logError("Envoi du lien de réinitialisation échoué", error, {});
@@ -64,7 +64,7 @@ accountRouter.post("/sign-up", async (c) => {
   const limited = ipLimited(c, "sign-up", 10, 15 * 60_000);
   if (limited) return limited;
   const body = await parse(SignUpDtoSchema, c);
-  if (claimResetSlot(`sign-up:${body.email.toLowerCase()}`)) await startSignUp(createServiceSupabaseClient(), body.email, body.password);
+  if (claimResetSlot(`sign-up:${body.email.toLowerCase()}`)) await startSignUp(createServiceSupabaseClient(), body.email, body.password, new Date(), body.clubSlug);
   return c.json({ sent: true as const }, 202, NO_STORE);
 });
 
@@ -75,7 +75,7 @@ accountRouter.post("/sign-up/resend", async (c) => {
   const body = await parse(ResendCodeDtoSchema, c);
   if (claimResetSlot(`sign-up:${body.email.toLowerCase()}`)) {
     try {
-      await resendSignUpCode(createServiceSupabaseClient(), body.email);
+      await resendSignUpCode(createServiceSupabaseClient(), body.email, new Date(), body.clubSlug);
     } catch (error) {
       logError("Renvoi du code de création de compte échoué", error, {});
     }

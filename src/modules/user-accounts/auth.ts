@@ -1,7 +1,8 @@
 import type { User } from "@supabase/supabase-js";
 import type { DbClient } from "../../db/client.js";
 import { badRequest, forbidden, unauthorized } from "../../api-error.js";
-import { appBaseUrl, findUserByEmail } from "../../auth/account-invites.js";
+import { appBaseUrl, clubAccountPath, findUserByEmail } from "../../auth/account-invites.js";
+import { links } from "../../links/links.js";
 import { sendEmail } from "../../email/resend.js";
 import { buildAlreadyRegisteredEmail, buildSignupCodeEmail } from "../../email/account-emails.js";
 import { PLATFORM_NAME } from "../../email/layout.js";
@@ -45,7 +46,13 @@ function toAccountSession(session: AuthSession): AccountSession {
   };
 }
 
-async function sendNewCode(db: DbClient, user: User, now: Date): Promise<void> {
+/** Lien des emails de compte : l'espace du club d'où vient la personne, sinon l'accueil. */
+async function accountEmailLink(db: DbClient, clubSlug?: string | null): Promise<string> {
+  const path = await clubAccountPath(db, clubSlug);
+  return path ? links(appBaseUrl()).absolute(path) : appBaseUrl();
+}
+
+async function sendNewCode(db: DbClient, user: User, now: Date, clubSlug?: string | null): Promise<void> {
   const code = generateSignupCode();
   const metadata: CodeMetadata = {
     signup_code_hash: hashSignupCode(user.id, code),
@@ -54,7 +61,7 @@ async function sendNewCode(db: DbClient, user: User, now: Date): Promise<void> {
   };
   const { error } = await db.auth.admin.updateUserById(user.id, { app_metadata: { ...user.app_metadata, ...metadata } });
   if (error) throw new Error(`Enregistrement du code échoué : ${error.message}`);
-  const message = buildSignupCodeEmail({ code, link: appBaseUrl() });
+  const message = buildSignupCodeEmail({ code, link: await accountEmailLink(db, clubSlug) });
   await sendEmail({ to: user.email!, fromName: PLATFORM_NAME, ...message });
 }
 
@@ -63,13 +70,13 @@ async function sendNewCode(db: DbClient, user: User, now: Date): Promise<void> {
  * code. Adresse déjà inscrite et vérifiée : email « tu as déjà un compte » à
  * cette adresse, et la même réponse à l'appelant.
  */
-export async function startSignUp(db: DbClient, email: string, password: string, now: Date = new Date()): Promise<void> {
+export async function startSignUp(db: DbClient, email: string, password: string, now: Date = new Date(), clubSlug?: string | null): Promise<void> {
   if (password.length < MIN_PASSWORD_LENGTH) throw badRequest(`Le mot de passe doit faire au moins ${MIN_PASSWORD_LENGTH} caractères.`, "WEAK_PASSWORD");
   const address = email.trim().toLowerCase();
   const existing = await findUserByEmail(db, address);
 
   if (existing?.email_confirmed_at) {
-    const message = buildAlreadyRegisteredEmail({ link: appBaseUrl() });
+    const message = buildAlreadyRegisteredEmail({ link: await accountEmailLink(db, clubSlug) });
     await sendEmail({ to: address, fromName: PLATFORM_NAME, ...message });
     return;
   }
@@ -78,13 +85,13 @@ export async function startSignUp(db: DbClient, email: string, password: string,
     // Création jamais terminée : personne n'a prouvé posséder l'adresse, on reprend avec le nouveau mot de passe.
     const { data, error } = await db.auth.admin.updateUserById(existing.id, { password });
     if (error || !data.user) throw mapPasswordError(error);
-    await sendNewCode(db, data.user, now);
+    await sendNewCode(db, data.user, now, clubSlug);
     return;
   }
 
   const { data, error } = await db.auth.admin.createUser({ email: address, password, email_confirm: false });
   if (error || !data.user) throw mapPasswordError(error);
-  await sendNewCode(db, data.user, now);
+  await sendNewCode(db, data.user, now, clubSlug);
 }
 
 function mapPasswordError(error: { message?: string } | null): Error {
@@ -94,9 +101,9 @@ function mapPasswordError(error: { message?: string } | null): Error {
 }
 
 /** Renvoi du code (même réponse dans tous les cas). */
-export async function resendSignUpCode(db: DbClient, email: string, now: Date = new Date()): Promise<void> {
+export async function resendSignUpCode(db: DbClient, email: string, now: Date = new Date(), clubSlug?: string | null): Promise<void> {
   const existing = await findUserByEmail(db, email.trim().toLowerCase());
-  if (existing && !existing.email_confirmed_at) await sendNewCode(db, existing, now);
+  if (existing && !existing.email_confirmed_at) await sendNewCode(db, existing, now, clubSlug);
 }
 
 /** Vérifie le code, confirme l'adresse, puis ouvre la session avec le mot de passe choisi. */
