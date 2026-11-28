@@ -10,10 +10,11 @@ import { isAccountClubAdmin } from "../device-auth/admin-session.js";
 /**
  * Comptes utilisateurs de l'espace licencié (docs/ACCOUNTS.md).
  *
- * Un compte suit un ou plusieurs licenciés via `account_licencie_links`. Un
- * lien devient ACTIF seulement s'il est prouvé : adresse VÉRIFIÉE déjà
- * connue sur la fiche, lien personnel, session d'appareil, invitation d'un
- * proche déjà lié, ou décision d'un admin du club. Sinon il reste EN ATTENTE.
+ * Un compte suit un ou plusieurs licenciés via `account_licencie_links`. Le
+ * rattachement est ACTIF tout de suite (choix du club : pas de validation
+ * préalable). Le club garde la main après coup : il retire un rattachement
+ * (statut `refused`, qui bloque une nouvelle demande) ou retire le compte
+ * entier du club. `pending` n'est plus produit mais reste lu.
  */
 
 export type LinkStatus = "active" | "pending" | "refused";
@@ -75,6 +76,8 @@ async function upsertLink(db: DbClient, input: { clubId: string; userId: string;
   const current = existing as { id: string; status: LinkStatus } | null;
   // Un lien actif ne redescend jamais en attente par une nouvelle demande.
   if (current?.status === "active") return "active";
+  // Rattachement retiré par le club : seule une preuve forte (ou l'admin) le rétablit.
+  if (current?.status === "refused" && input.source === "request") throw forbidden("Le club a retiré ce rattachement. Contacte le club.", "LINK_REMOVED_BY_CLUB");
   const decided = input.status === "active" ? { decided_at: now.toISOString(), decided_by: input.decidedBy ?? null } : { decided_at: null, decided_by: null };
   if (current) {
     await db.from("account_licencie_links").update({ status: input.status, source: input.source, ...decided }).eq("id", current.id);
@@ -97,9 +100,9 @@ async function assertLicencieInClub(db: DbClient, clubId: string, licencieId: st
 }
 
 /**
- * « C'est moi / c'est mon enfant » après la recherche du nom. Actif tout de
- * suite si une preuve est fournie (lien personnel) ou si l'adresse VÉRIFIÉE du
- * compte est déjà connue sur la fiche ; sinon en attente d'un admin du club.
+ * « C'est moi / c'est mon enfant » après la recherche du nom : actif tout de
+ * suite. La source garde la trace de la preuve éventuelle (lien personnel,
+ * adresse VÉRIFIÉE connue sur la fiche) pour l'écran du club.
  */
 export async function requestLink(
   db: DbClient,
@@ -121,7 +124,7 @@ export async function requestLink(
   if (email && user.emailConfirmed && (await knownEmails(db, clubId, input.licencieId, now)).has(email)) {
     return upsertLink(db, { clubId, userId: user.id, licencieId: input.licencieId, status: "active", source: "email_match" }, now);
   }
-  return upsertLink(db, { clubId, userId: user.id, licencieId: input.licencieId, status: "pending", source: "request" }, now);
+  return upsertLink(db, { clubId, userId: user.id, licencieId: input.licencieId, status: "active", source: "request" }, now);
 }
 
 /** Reprise d'une session d'appareil existante (app iOS d'avant les comptes) : toutes ses personnes deviennent actives sur le compte. */
@@ -217,9 +220,36 @@ export async function decideLink(db: DbClient, clubId: string, linkId: string, d
   if (!data || data.length === 0) throw notFound("Demande introuvable.");
 }
 
-export async function deleteClubLink(db: DbClient, clubId: string, linkId: string): Promise<void> {
-  const { data } = await db.from("account_licencie_links").delete().eq("club_id", clubId).eq("id", linkId).select("id");
+/**
+ * Le club retire un rattachement : le lien passe à `refused` (et non supprimé)
+ * pour que le compte ne puisse pas le redemander aussitôt.
+ */
+export async function deleteClubLink(db: DbClient, clubId: string, linkId: string, adminId: string, now: Date = new Date()): Promise<void> {
+  const { data } = await db.from("account_licencie_links").update({ status: "refused", decided_at: now.toISOString(), decided_by: adminId }).eq("club_id", clubId).eq("id", linkId).select("id");
   if (!data || data.length === 0) throw notFound("Lien introuvable.");
+}
+
+/**
+ * Le club retire un COMPTE (quelqu'un a fait n'importe quoi) : tous ses
+ * rattachements dans ce club sont retirés, ses jetons push du club effacés.
+ * Si le compte ne suit plus personne ailleurs, il est supprimé entièrement.
+ * Un compte admin d'un club n'est jamais supprimé par cette voie.
+ */
+export async function removeAccountFromClub(db: DbClient, clubId: string, linkId: string, adminId: string, now: Date = new Date()): Promise<{ accountDeleted: boolean }> {
+  const { data: link } = await db.from("account_licencie_links").select("user_id").eq("club_id", clubId).eq("id", linkId).maybeSingle();
+  const userId = (link as { user_id: string } | null)?.user_id;
+  if (!userId) throw notFound("Lien introuvable.");
+  if (userId === adminId) throw badRequest("Tu ne peux pas retirer ton propre compte.", "SELF_REMOVAL");
+  await db.from("account_licencie_links").update({ status: "refused", decided_at: now.toISOString(), decided_by: adminId }).eq("club_id", clubId).eq("user_id", userId);
+  await db.from("account_push_tokens").delete().eq("club_id", clubId).eq("user_id", userId);
+
+  const { data: elsewhere } = await db.from("account_licencie_links").select("id").eq("user_id", userId).neq("club_id", clubId).in("status", ["active", "pending"]).limit(1);
+  if ((elsewhere ?? []).length > 0) return { accountDeleted: false };
+  const { data: memberships } = await db.from("club_memberships").select("id").eq("user_id", userId).limit(1);
+  if ((memberships ?? []).length > 0) return { accountDeleted: false };
+  const { error } = await db.auth.admin.deleteUser(userId);
+  if (error) throw new Error(`Suppression du compte échouée : ${error.message}`);
+  return { accountDeleted: true };
 }
 
 // ─── Suppression du compte ──────────────────────────────────────────────────

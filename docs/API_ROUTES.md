@@ -1,7 +1,7 @@
 # Inventaire des routes de l'API
 
 > Fichier **généré** par `npm run docs:routes` (ops/docs/generate-routes-doc.ts) — ne pas modifier à la main.
-> 210 routes montées dans le code, 202 décrites dans le contrat OpenAPI (`/openapi.json`, `/docs`).
+> 211 routes montées dans le code, 203 décrites dans le contrat OpenAPI (`/openapi.json`, `/docs`).
 
 Accès : **Compte connecté** = JWT Supabase (`Authorization: Bearer`), droits vérifiés par club ; **Public** = sans compte ; **Public (lien perso si action)** = lecture libre, écriture avec le jeton du lien personnel ; **Secret cron** = `CRON_SECRET`.
 
@@ -9,10 +9,11 @@ Accès : **Compte connecté** = JWT Supabase (`Authorization: Bearer`), droits v
 
 | Méthode | Route | Accès | Description |
 |---|---|---|---|
-| GET | `/v1/clubs/:clubId/account-links` | Compte connecté | Comptes liés aux licenciés (file « Demandes de rattachement » avec status=pending) |
-| DELETE | `/v1/clubs/:clubId/account-links/:linkId` | Compte connecté | Lien retiré |
+| GET | `/v1/clubs/:clubId/account-links` | Compte connecté | Comptes liés aux licenciés du club |
+| DELETE | `/v1/clubs/:clubId/account-links/:linkId` | Compte connecté | Rattachement retiré (bloqué) |
 | POST | `/v1/clubs/:clubId/account-links/:linkId/accept` | Compte connecté | Rattachement accepté |
 | POST | `/v1/clubs/:clubId/account-links/:linkId/refuse` | Compte connecté | Rattachement refusé |
+| POST | `/v1/clubs/:clubId/account-links/:linkId/remove-account` | Compte connecté | Compte retiré du club (supprimé s'il ne suit plus personne ailleurs) |
 
 ## Club — capabilities
 

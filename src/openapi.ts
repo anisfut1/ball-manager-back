@@ -104,6 +104,7 @@ import {
   AccountPushTokenRefDtoSchema,
   AccountSessionDtoSchema,
   AdminAccountLinkListDtoSchema,
+  RemoveAccountFromClubResultDtoSchema,
   CreateAccountInviteDtoSchema,
   CreateAccountLinkDtoSchema,
   ImportDeviceSessionDtoSchema,
@@ -1434,10 +1435,11 @@ registry.registerPath({ method: "post", path: "/v1/public/clubs/{clubSlug}/team-
 
   const admin = "/v1/clubs/{clubId}/account-links";
   const linkParams = clubIdParam.extend({ linkId: z.string().uuid() });
-  registry.registerPath({ method: "get", path: admin, security: bearerAuth, request: { params: clubIdParam, query: z.object({ status: LinkStatusSchema.optional(), licencieId: z.string().uuid().optional() }) }, responses: { 200: jsonResponse("Comptes liés aux licenciés (file « Demandes de rattachement » avec status=pending)", AdminAccountLinkListDtoSchema), ...errorResponses, ...validationResponses } });
+  registry.registerPath({ method: "get", path: admin, security: bearerAuth, request: { params: clubIdParam, query: z.object({ status: LinkStatusSchema.optional(), licencieId: z.string().uuid().optional() }) }, responses: { 200: jsonResponse("Comptes liés aux licenciés du club", AdminAccountLinkListDtoSchema), ...errorResponses, ...validationResponses } });
   registry.registerPath({ method: "post", path: `${admin}/{linkId}/accept`, security: bearerAuth, request: { params: linkParams }, responses: { 204: { description: "Rattachement accepté" }, ...errorResponses } });
   registry.registerPath({ method: "post", path: `${admin}/{linkId}/refuse`, security: bearerAuth, request: { params: linkParams }, responses: { 204: { description: "Rattachement refusé" }, ...errorResponses } });
-  registry.registerPath({ method: "delete", path: `${admin}/{linkId}`, security: bearerAuth, request: { params: linkParams }, responses: { 204: { description: "Lien retiré" }, ...errorResponses } });
+  registry.registerPath({ method: "delete", path: `${admin}/{linkId}`, security: bearerAuth, request: { params: linkParams }, responses: { 204: { description: "Rattachement retiré (bloqué)" }, ...errorResponses } });
+  registry.registerPath({ method: "post", path: `${admin}/{linkId}/remove-account`, security: bearerAuth, request: { params: linkParams }, responses: { 200: jsonResponse("Compte retiré du club (supprimé s'il ne suit plus personne ailleurs)", RemoveAccountFromClubResultDtoSchema), ...errorResponses } });
 }
 
 export function generateOpenApiDocument() {
