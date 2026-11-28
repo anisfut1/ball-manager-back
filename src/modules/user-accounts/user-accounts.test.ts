@@ -84,15 +84,18 @@ describe("rattachement d'un licencié au compte", () => {
     expect(body.account.people).toEqual([expect.objectContaining({ licencieId: LINA, firstName: "Lina", status: "active" })]);
   });
 
-  it("adresse inconnue de la fiche : en attente d'un admin", async () => {
+  it("adresse inconnue de la fiche : actif tout de suite, sans validation du club", async () => {
     const res = await account("/links", { method: "POST", as: "pere", body: { licencieId: LINA } });
-    expect((await json<{ status: string }>(res)).status).toBe("pending");
+    expect((await json<{ status: string }>(res)).status).toBe("active");
+    expect(state.accountLinks[0]).toEqual(expect.objectContaining({ status: "active", source: "request" }));
+    expect((await licencieFromRequest(req({ authorization: "Bearer jwt-pere" }), buildFakeClubSupabase(state), CLUB_A.id)).id).toBe(LINA);
   });
 
-  it("adresse connue mais PAS vérifiée : en attente (jamais une preuve)", async () => {
+  it("adresse connue mais PAS vérifiée : actif, mais pas noté comme preuve", async () => {
     users.inconnu = { email: "mere@example.test", emailConfirmed: false };
     const res = await account("/links", { method: "POST", as: "inconnu", body: { licencieId: LINA } });
-    expect((await json<{ status: string }>(res)).status).toBe("pending");
+    expect((await json<{ status: string }>(res)).status).toBe("active");
+    expect(state.accountLinks[0]!.source).toBe("request");
   });
 
   it("lien personnel valide du même licencié : actif ; celui d'un autre : refusé", async () => {
@@ -124,7 +127,7 @@ describe("rattachement d'un licencié au compte", () => {
 describe("droits : le compte agit pour ses licenciés ACTIFS seulement", () => {
   it("aucun lien : NO_LINKED_LICENCIE ; en attente : pas encore de droits", async () => {
     await expect(licencieFromRequest(req({ authorization: "Bearer jwt-pere" }), buildFakeClubSupabase(state), CLUB_A.id)).rejects.toMatchObject({ code: "NO_LINKED_LICENCIE" });
-    await account("/links", { method: "POST", as: "pere", body: { licencieId: LINA } });
+    state.accountLinks.push({ id: "l-pending", club_id: CLUB_A.id, user_id: "pere", licencie_id: LINA, status: "pending", source: "request" });
     await expect(licencieFromRequest(req({ authorization: "Bearer jwt-pere" }), buildFakeClubSupabase(state), CLUB_A.id)).rejects.toMatchObject({ status: 403 });
   });
 
@@ -161,27 +164,67 @@ describe("invitation d'un proche", () => {
   });
 
   it("seul un compte ACTIF sur le licencié peut inviter", async () => {
-    await account("/links", { method: "POST", as: "pere", body: { licencieId: LINA } });
+    state.accountLinks.push({ id: "l-pending", club_id: CLUB_A.id, user_id: "pere", licencie_id: LINA, status: "pending", source: "request" });
     const res = await account("/invites", { method: "POST", as: "pere", body: { licencieId: LINA } });
     expect(res.status).toBe(403);
   });
 });
 
-describe("administration : demandes de rattachement", () => {
+describe("administration : comptes rattachés", () => {
   const admin = (path: string, init: Parameters<typeof call>[1] = {}) => call(`/v1/clubs/${CLUB_A.id}/account-links${path}`, { as: "admin", ...init });
+  const linkId = async () => (await json<{ links: { id: string }[] }>(await admin(""))).links[0]!.id;
 
-  it("l'admin voit la demande en attente et l'accepte", async () => {
+  it("l'admin voit les comptes rattachés", async () => {
     await account("/links", { method: "POST", as: "pere", body: { licencieId: LINA } });
-    const list = await json<{ links: { id: string; email: string; firstName: string; status: string }[] }>(await admin("?status=pending"));
-    expect(list.links).toEqual([expect.objectContaining({ email: "pere@example.test", firstName: "Lina", status: "pending" })]);
-    expect((await admin(`/${list.links[0]!.id}/accept`, { method: "POST" })).status).toBe(204);
-    expect((await licencieFromRequest(req({ authorization: "Bearer jwt-pere" }), buildFakeClubSupabase(state), CLUB_A.id)).id).toBe(LINA);
+    const list = await json<{ links: { email: string; firstName: string; status: string }[] }>(await admin("?status=active"));
+    expect(list.links).toEqual([expect.objectContaining({ email: "pere@example.test", firstName: "Lina", status: "active" })]);
   });
 
-  it("refus : le compte n'a pas de droits", async () => {
+  it("retirer un rattachement coupe l'accès et bloque une nouvelle demande", async () => {
     await account("/links", { method: "POST", as: "pere", body: { licencieId: LINA } });
-    const [link] = (await json<{ links: { id: string }[] }>(await admin("?status=pending"))).links;
-    expect((await admin(`/${link!.id}/refuse`, { method: "POST" })).status).toBe(204);
+    expect((await admin(`/${await linkId()}`, { method: "DELETE" })).status).toBe(204);
+    expect(state.accountLinks[0]!.status).toBe("refused");
+    await expect(licencieFromRequest(req({ authorization: "Bearer jwt-pere" }), buildFakeClubSupabase(state), CLUB_A.id)).rejects.toBeTruthy();
+    const again = await account("/links", { method: "POST", as: "pere", body: { licencieId: LINA } });
+    expect(again.status).toBe(403);
+    // L'admin peut le rétablir.
+    expect((await admin(`/${state.accountLinks[0]!.id}/accept`, { method: "POST" })).status).toBe(204);
+    expect(state.accountLinks[0]!.status).toBe("active");
+  });
+
+  it("retirer le compte : liens coupés, jetons effacés, compte supprimé s'il ne suit personne ailleurs", async () => {
+    await account("/links", { method: "POST", as: "pere", body: { licencieId: LINA } });
+    await account("/links", { method: "POST", as: "pere", body: { licencieId: HUGO } });
+    await account("/push-token", { method: "PUT", as: "pere", body: { token: "c".repeat(64), environment: "production" } });
+    const res = await admin(`/${await linkId()}/remove-account`, { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(await json<{ accountDeleted: boolean }>(res)).toEqual({ accountDeleted: true });
+    expect(state.deletedAuthUsers).toEqual(["pere"]);
+  });
+
+  it("retirer le compte : il reste s'il suit quelqu'un dans un autre club", async () => {
+    await account("/links", { method: "POST", as: "pere", body: { licencieId: LINA } });
+    state.accountLinks.push({ id: "66666666-6666-4666-8666-000000000002", club_id: CLUB_B.id, user_id: "pere", licencie_id: OTHER_CLUB_KID, status: "active", source: "request" });
+    const res = await admin(`/${state.accountLinks[0]!.id}/remove-account`, { method: "POST" });
+    expect(await json<{ accountDeleted: boolean }>(res)).toEqual({ accountDeleted: false });
+    expect(state.deletedAuthUsers).toEqual([]);
+    expect(state.accountLinks.map((l) => `${l.club_id === CLUB_A.id ? "A" : "B"}:${l.status}`)).toEqual(["A:refused", "B:active"]);
+  });
+
+  it("un compte membre du club (staff) n'est jamais supprimé par cette voie", async () => {
+    state.accountLinks.push({ id: "66666666-6666-4666-8666-000000000003", club_id: CLUB_A.id, user_id: "admin", licencie_id: LINA, status: "active", source: "request" });
+    users.coach = { email: "coach@example.test", emailConfirmed: true };
+    state.memberships.push({ id: "55555555-5555-4555-8555-00000000000b", club_id: CLUB_A.id, user_id: "coach", status: "active" } as never);
+    state.accountLinks.push({ id: "66666666-6666-4666-8666-000000000004", club_id: CLUB_A.id, user_id: "coach", licencie_id: HUGO, status: "active", source: "request" });
+    expect((await admin("/66666666-6666-4666-8666-000000000003/remove-account", { method: "POST" })).status).toBe(400);
+    const res = await admin("/66666666-6666-4666-8666-000000000004/remove-account", { method: "POST" });
+    expect(await json<{ accountDeleted: boolean }>(res)).toEqual({ accountDeleted: false });
+    expect(state.deletedAuthUsers).toEqual([]);
+  });
+
+  it("refus d'une ancienne demande en attente : le compte n'a pas de droits", async () => {
+    state.accountLinks.push({ id: "66666666-6666-4666-8666-000000000005", club_id: CLUB_A.id, user_id: "pere", licencie_id: LINA, status: "pending", source: "request" });
+    expect((await admin("/66666666-6666-4666-8666-000000000005/refuse", { method: "POST" })).status).toBe(204);
     expect(state.accountLinks[0]!.status).toBe("refused");
   });
 
@@ -190,9 +233,10 @@ describe("administration : demandes de rattachement", () => {
     expect([403, 404]).toContain(res.status);
   });
 
-  it("une demande d'un autre club est introuvable", async () => {
-    state.accountLinks.push({ id: "66666666-6666-4666-8666-000000000001", club_id: CLUB_B.id, user_id: "pere", licencie_id: OTHER_CLUB_KID, status: "pending", source: "request" });
-    expect((await admin("/66666666-6666-4666-8666-000000000001/accept", { method: "POST" })).status).toBe(404);
+  it("un lien d'un autre club est introuvable", async () => {
+    state.accountLinks.push({ id: "66666666-6666-4666-8666-000000000001", club_id: CLUB_B.id, user_id: "pere", licencie_id: OTHER_CLUB_KID, status: "active", source: "request" });
+    expect((await admin("/66666666-6666-4666-8666-000000000001/remove-account", { method: "POST" })).status).toBe(404);
+    expect((await admin("/66666666-6666-4666-8666-000000000001", { method: "DELETE" })).status).toBe(404);
   });
 });
 
@@ -217,7 +261,7 @@ describe("suppression du compte et notifications", () => {
   });
 
   it("un jeton push d'un lien EN ATTENTE ne reçoit rien", async () => {
-    await account("/links", { method: "POST", as: "pere", body: { licencieId: LINA } });
+    state.accountLinks.push({ id: "l-pending", club_id: CLUB_A.id, user_id: "pere", licencie_id: LINA, status: "pending", source: "request" });
     await account("/push-token", { method: "PUT", as: "pere", body: { token: "b".repeat(64), environment: "production" } });
     expect(await pushTargets(buildFakeClubSupabase(state), CLUB_A.id, [LINA])).toEqual([]);
   });

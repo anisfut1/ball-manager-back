@@ -80,5 +80,6 @@ export const AdminAccountLinkDtoSchema = z
   .openapi("AdminAccountLinkDto");
 
 export const AdminAccountLinkListDtoSchema = z.object({ links: z.array(AdminAccountLinkDtoSchema) }).openapi("AdminAccountLinkListDto");
+export const RemoveAccountFromClubResultDtoSchema = z.object({ accountDeleted: z.boolean() }).openapi("RemoveAccountFromClubResultDto");
 
 export type AccountDto = z.infer<typeof AccountDtoSchema>;

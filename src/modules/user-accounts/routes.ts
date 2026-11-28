@@ -21,7 +21,8 @@ import {
   LinkStatusSchema,
   type AccountDto,
 } from "../../contracts/accounts.js";
-import { acceptInvite, accountPeople, createInvite, decideLink, deleteAccount, deleteClubLink, linkFromDeviceSession, listClubLinks, removeLink, requestLink } from "./service.js";
+import { acceptInvite, accountPeople, createInvite, decideLink, deleteAccount, deleteClubLink,
+  removeAccountFromClub, linkFromDeviceSession, listClubLinks, removeLink, requestLink } from "./service.js";
 
 /**
  * `/v1/public/clubs/{clubSlug}/account/…` — le compte connecté
@@ -170,6 +171,11 @@ accountLinksAdminRouter.post("/:linkId/refuse", async (c) => {
 });
 
 accountLinksAdminRouter.delete("/:linkId", async (c) => {
-  await deleteClubLink(createServiceSupabaseClient(), c.get("club").club.id, c.req.param("linkId"));
+  await deleteClubLink(createServiceSupabaseClient(), c.get("club").club.id, c.req.param("linkId"), c.get("user").id);
   return c.body(null, 204);
+});
+
+accountLinksAdminRouter.post("/:linkId/remove-account", async (c) => {
+  const result = await removeAccountFromClub(createServiceSupabaseClient(), c.get("club").club.id, c.req.param("linkId"), c.get("user").id);
+  return c.json(result, 200, NO_STORE);
 });

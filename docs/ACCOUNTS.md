@@ -34,11 +34,23 @@ journalisé.
 
 Après la recherche du nom, `POST /v1/public/clubs/{slug}/account/links` :
 
-- **actif tout de suite** si un lien personnel valide du même licencié est
-  fourni, ou si l'adresse VÉRIFIÉE du compte est déjà connue (email de la
-  fiche FBI ou d'un lien personnel actif) ;
-- **en attente** sinon : un admin du club accepte ou refuse dans la file
-  « Demandes de rattachement » (`/v1/clubs/{clubId}/account-links`).
+le lien est **actif tout de suite**, sans validation du club (décision du
+club pilote, 28/11/2026). La `source` garde la trace de la preuve éventuelle
+(`personal_link`, `email_match` si l'adresse VÉRIFIÉE est connue sur la fiche,
+sinon `request`) pour l'écran du club. Un lien personnel d'une autre personne
+reste refusé (`TOKEN_MISMATCH`). `pending` n'est plus produit.
+
+Le club garde la main après coup (`/v1/clubs/{clubId}/account-links`,
+club_admin ou correspondant) :
+
+- `DELETE /{linkId}` **retire un rattachement** : statut `refused`, l'accès est
+  coupé et le compte ne peut plus le redemander (`LINK_REMOVED_BY_CLUB`) ;
+  l'admin peut le rétablir par `POST /{linkId}/accept` ;
+- `POST /{linkId}/remove-account` **retire le compte du club** : tous ses
+  rattachements du club passent à `refused`, ses jetons push du club sont
+  effacés ; s'il ne suit plus personne ailleurs et n'est membre d'aucun club,
+  le compte Auth est supprimé (`accountDeleted: true`). Un admin ne peut pas
+  se retirer lui-même.
 
 Autres preuves : `POST …/account/links/device-session` reprend les personnes
 d'une session d'appareil de l'app d'avant les comptes ; une invitation d'un
